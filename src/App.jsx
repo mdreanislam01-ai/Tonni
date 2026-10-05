@@ -13,6 +13,18 @@ import {
   Globe,
   Image as ImageIcon,
   Info,
+  Home,
+  MonitorUp,
+  MonitorX,
+  Speaker,
+  Hash,
+  CircleHelp,
+  ContactRound,
+  HardDrive,
+  LockKeyhole,
+  LogOut,
+  Camera,
+  PhoneIncoming,
   MessageCircle,
   MessagesSquare,
   Mic,
@@ -30,6 +42,8 @@ import {
   Share2,
   ShieldCheck,
   Smile,
+  Smartphone,
+  UserRound,
   Sun,
   Trash2,
   UserPlus,
@@ -56,63 +70,21 @@ const AVATAR_COLORS = [
 ];
 
 const words = {
-  bn: {
-    tagline: 'কাছের মানুষ, কাছের কথা', chats: 'চ্যাট', calls: 'কল', contacts: 'পরিচিতি',
-    online: 'অনলাইন', offline: 'অফলাইন', connecting: 'সংযোগ হচ্ছে…', connected: 'সংযুক্ত',
-    reconnecting: 'আবার সংযোগ হচ্ছে…', all: 'সব', unread: 'নতুন', search: 'খুঁজুন',
-    searchPlaceholder: 'চ্যাট বা পরিচিতি খুঁজুন', newChat: 'নতুন চ্যাট', addContact: 'ID দিয়ে যোগ করুন',
-    saved: 'সেভড মেসেজ', savedSub: 'শুধু আপনার জন্য', noChats: 'এখনও কোনো চ্যাট নেই',
-    noChatsHint: 'পরিচিতির You & Me ID দিয়ে নতুন কথোপকথন শুরু করুন।',
-    localRoom: 'আপনার ব্যক্তিগত জায়গা', localRoomHint: 'নিজের জন্য নোট বা লিংক এখানে লিখে রাখুন। এগুলো এই ডিভাইসেই থাকে।',
-    welcomeTitle: 'কথা শুরু হোক', welcomeHint: 'রেজিস্ট্রেশন বা ফোন নম্বর লাগবে না। আপনার ID শেয়ার করুন, অথবা পরিচিতির ID দিয়ে নতুন চ্যাট খুলুন।',
-    yourId: 'আপনার You & Me ID', copyId: 'ID কপি', shareInvite: 'আমার ID শেয়ার করুন',
-    typeMessage: 'একটি মেসেজ লিখুন…', send: 'পাঠান', attach: 'ফাইল যুক্ত করুন', emoji: 'ইমোজি',
-    voiceMessage: 'ভয়েস মেসেজ', recording: 'রেকর্ড হচ্ছে', tapToStop: 'থামাতে আবার চাপুন',
-    startConversation: 'কথোপকথন শুরু করুন', emptyChatHint: 'এখানে পাঠানো মেসেজ এই ডিভাইসে সেভ হবে।',
-    today: 'আজ', yesterday: 'গতকাল', you: 'আপনি', privateSpace: 'ব্যক্তিগত নোট',
-    newChatHint: 'বন্ধুর You & Me ID লিখুন। অ্যাকাউন্ট খুলতে হবে না।',
-    idPlaceholder: 'যেমন YM-A7K4Q9', nameOptional: 'নাম (ঐচ্ছিক)', namePlaceholder: 'পরিচিতির নাম',
-    startChat: 'চ্যাট শুরু করুন', cancel: 'বাতিল', close: 'বন্ধ করুন', invalidId: 'সঠিক ID দিন — যেমন YM-A7K4Q9', noConnection: 'পরিচয় যাচাই করা যায়নি। পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।',
-    onlineNow: 'এখন অনলাইন', yourContacts: 'আপনার পরিচিতি', noOnline: 'এখন পরিচিত কেউ অনলাইনে নেই',
-    noContacts: 'পরিচিতি যোগ করা হয়নি', onlineListHint: 'বন্ধুরা অনলাইনে এলে এখানে দেখা যাবে।',
-    callHistory: 'সাম্প্রতিক কল', noCalls: 'এখনও কোনো কল নেই', noCallsHint: 'চ্যাট থেকে ভয়েস বা ভিডিও কল শুরু করুন।',
-    voiceCall: 'ভয়েস কল', videoCall: 'ভিডিও কল', incomingCall: 'ইনকামিং কল', outgoingCall: 'আউটগোয়িং কল',
-    incoming: 'আসছে', outgoing: 'আপনি করেছেন', missed: 'মিসড কল', declined: 'কল কেটে দিয়েছেন',
-    answer: 'রিসিভ', decline: 'বাতিল', endCall: 'কল শেষ', mute: 'মিউট', unmute: 'আনমিউট',
-    cameraOff: 'ক্যামেরা বন্ধ', cameraOn: 'ক্যামেরা চালু', ringing: 'রিং হচ্ছে…', connectingCall: 'সংযোগ হচ্ছে…',
-    callConnected: 'কথা হচ্ছে', callEnded: 'কল শেষ হয়েছে', callOffline: 'এই মুহূর্তে পরিচিতি অনলাইনে নেই।',
-    callBusy: 'পরিচিতি অন্য কলে আছেন।', callMediaError: 'মাইক্রোফোন বা ক্যামেরার অনুমতি দিন, তারপর আবার চেষ্টা করুন।',
-    settings: 'সেটিংস', profile: 'প্রোফাইল', displayName: 'আপনার নাম', save: 'সেভ করুন',
-    appearance: 'দেখতে কেমন হবে', light: 'লাইট', dark: 'ডার্ক', language: 'ভাষা', bengali: 'বাংলা', english: 'English',
-    notifications: 'নোটিফিকেশন', enableNotifications: 'ব্রাউজার নোটিফিকেশন চালু করুন', sound: 'মেসেজের সাউন্ড',
-    privacy: 'প্রাইভেসি', privacyHint: 'You & Me-তে অ্যাকাউন্ট, ফোন নম্বর বা পাসওয়ার্ড লাগে না। আপনার ID-ই পরিচিতির ঠিকানা।',
-    saveOnDevice: 'চ্যাট হিস্ট্রি এই ডিভাইসে সেভ হয়', inviteLink: 'ইনভাইট লিংক কপি', settingsHint: 'আপনার পছন্দ এই ডিভাইসেই রাখা হয়।',
-    copied: 'কপি হয়েছে', copyFailed: 'কপি করা যায়নি', nameSaved: 'নাম সেভ হয়েছে', messageSaved: 'মেসেজ পাঠানো হয়েছে',
-    pinned: 'পিন করা হয়েছে', unpinned: 'আনপিন করা হয়েছে', pinChat: 'চ্যাট পিন করুন', unpinChat: 'চ্যাট আনপিন করুন',
-    clearChat: 'চ্যাট হিস্ট্রি মুছুন', clearConfirm: 'এই ডিভাইস থেকে এই চ্যাটের মেসেজ মুছে ফেলবেন?',
-    attachmentTooLarge: 'ফাইলটি ৪৫০ KB-এর চেয়ে ছোট হতে হবে।', unsupportedRecording: 'এই ব্রাউজারে ভয়েস রেকর্ডিং নেই।',
-    messagePending: 'পাঠানোর অপেক্ষায়', messageSent: 'পাঠানো হয়েছে', messageDelivered: 'পৌঁছেছে', messageRead: 'দেখেছেন',
-    shareText: 'You & Me-তে আমাকে চ্যাট করুন', guest: 'অতিথি', youAndMe: 'You & Me', noSignup: 'অ্যাকাউন্ট লাগবে না',
-    contactOffline: 'অফলাইনে — মেসেজ পাঠালে অনলাইনে এলে পেয়ে যাবেন', tapToChat: 'মেসেজ পাঠাতে লিখুন',
-    message: 'মেসেজ', file: 'ফাইল', audio: 'অডিও', noResults: 'কিছু পাওয়া যায়নি',
-    attachPhoto: 'ছবি বা ফাইল', newContact: 'পরিচিতি যোগ করুন', myProfile: 'আমার প্রোফাইল',
-    hide: 'লুকান', localOnly: 'শুধু এই ডিভাইসে', startNew: 'নতুন কথোপকথন',
-  },
   en: {
     tagline: 'Closer people, closer conversations', chats: 'Chats', calls: 'Calls', contacts: 'Contacts',
     online: 'Online', offline: 'Offline', connecting: 'Connecting…', connected: 'Connected',
     reconnecting: 'Reconnecting…', all: 'All', unread: 'Unread', search: 'Search',
     searchPlaceholder: 'Search chats or contacts', newChat: 'New chat', addContact: 'Add by ID',
     saved: 'Saved messages', savedSub: 'Just for you', noChats: 'No chats yet',
-    noChatsHint: 'Start a conversation with a contact’s You & Me ID.',
+    noChatsHint: 'Start a conversation with a contact’s You and Me ID.',
     localRoom: 'Your private space', localRoomHint: 'Keep notes and links for yourself here. They stay on this device.',
     welcomeTitle: 'Let’s get talking', welcomeHint: 'No registration or phone number. Share your ID, or enter a contact’s ID to start chatting.',
-    yourId: 'Your You & Me ID', copyId: 'Copy ID', shareInvite: 'Share my ID',
+    yourId: 'Your You and Me ID', copyId: 'Copy ID', shareInvite: 'Share my ID',
     typeMessage: 'Write a message…', send: 'Send', attach: 'Attach a file', emoji: 'Emoji',
     voiceMessage: 'Voice message', recording: 'Recording', tapToStop: 'Tap again to stop',
     startConversation: 'Start the conversation', emptyChatHint: 'Messages you send here are saved on this device.',
     today: 'Today', yesterday: 'Yesterday', you: 'You', privateSpace: 'Private notes',
-    newChatHint: 'Enter your contact’s You & Me ID. No account is needed.',
+    newChatHint: 'Enter your contact’s You and Me ID. No account is needed.',
     idPlaceholder: 'For example, YM-A7K4Q9', nameOptional: 'Name (optional)', namePlaceholder: 'Contact name',
     startChat: 'Start chat', cancel: 'Cancel', close: 'Close', invalidId: 'Enter a valid ID, for example YM-A7K4Q9', noConnection: 'Your guest ID could not be verified. Refresh and try again.',
     onlineNow: 'Online now', yourContacts: 'Your contacts', noOnline: 'No contacts are online right now',
@@ -125,20 +97,51 @@ const words = {
     callConnected: 'Connected', callEnded: 'Call ended', callOffline: 'This contact is not online right now.',
     callBusy: 'This contact is already on a call.', callMediaError: 'Allow microphone or camera access, then try again.',
     settings: 'Settings', profile: 'Profile', displayName: 'Your name', save: 'Save',
-    appearance: 'Appearance', light: 'Light', dark: 'Dark', language: 'Language', bengali: 'বাংলা', english: 'English',
+    appearance: 'Appearance', light: 'Light', dark: 'Dark',
     notifications: 'Notifications', enableNotifications: 'Enable browser notifications', sound: 'Message sound',
-    privacy: 'Privacy', privacyHint: 'You & Me does not need an account, phone number, or password. Your ID is your contact address.',
+    privacy: 'Privacy', privacyHint: 'You and Me does not need an account, phone number, or password. Your ID is your contact address.',
     saveOnDevice: 'Chat history is saved on this device', inviteLink: 'Copy invite link', settingsHint: 'Your preferences stay on this device.',
     copied: 'Copied', copyFailed: 'Could not copy', nameSaved: 'Name saved', messageSaved: 'Message sent',
     pinned: 'Chat pinned', unpinned: 'Chat unpinned', pinChat: 'Pin chat', unpinChat: 'Unpin chat',
     clearChat: 'Clear chat history', clearConfirm: 'Clear this chat’s messages from this device?',
     attachmentTooLarge: 'Please choose a file smaller than 450 KB.', unsupportedRecording: 'Voice recording is not available in this browser.',
     messagePending: 'Waiting to send', messageSent: 'Sent', messageDelivered: 'Delivered', messageRead: 'Seen',
-    shareText: 'Chat with me on You & Me', guest: 'Guest', youAndMe: 'You & Me', noSignup: 'No sign-up required',
+    shareText: 'Chat with me on You and Me', guest: 'Guest', youAndMe: 'You and Me', noSignup: 'No sign-up required',
     contactOffline: 'Offline — they’ll receive your message when they come online', tapToChat: 'Write a message to chat',
     message: 'Message', file: 'File', audio: 'Audio', noResults: 'Nothing found',
     attachPhoto: 'Photo or file', newContact: 'Add a contact', myProfile: 'My profile',
     hide: 'Hide', localOnly: 'This device only', startNew: 'Start a new conversation',
+    home: 'Home', welcomeBack: 'Welcome back', heroHeadline: 'Connect. Call. Chat. Together.',
+    heroDescription: 'Find your people and start a conversation — no sign-up needed.',
+    globalSearchPlaceholder: 'Search by name, username or Bangladesh number…',
+    quickActions: 'Quick actions', recentChats: 'Recent conversations', viewAll: 'View all',
+    peopleOnline: 'People online', noRecentChats: 'Your conversations will appear here.',
+    searchPeopleHint: 'Search online people by name, username, or a shared Bangladesh number.',
+    noSearchResults: 'No people found', searchIdHint: 'You can also start a chat using a You and Me ID.',
+    username: 'Username', phoneNumber: 'Bangladesh phone number', phoneOptional: 'Phone number (optional)',
+    phoneVisibility: 'Let people find me by phone number', phonePrivacyHint: 'Your number is only listed when you turn this on.',
+    profilePhoto: 'Profile photo', changePhoto: 'Change photo', removePhoto: 'Remove photo',
+    audioCall: 'Audio call', startMessage: 'Message',
+    account: 'Account', privacyControls: 'Privacy', dataStorage: 'Data & Storage', callsSettings: 'Calls',
+    contactsSettings: 'Contacts', security: 'Security', support: 'Help & Support', logout: 'Log out',
+    showPresence: 'Show my online status', presenceHint: 'When off, you will not appear in online search.',
+    screenShare: 'Share screen', stopScreenShare: 'Stop sharing', allowScreenShare: 'Allow screen sharing?',
+    screenShareHint: 'Your browser will ask you to choose a screen or window. You can stop sharing at any time.',
+    allow: 'Allow', speaker: 'Speaker', speakerOff: 'Speaker off', keypad: 'Keypad', switchCamera: 'Switch camera',
+    contactsImport: 'Import contacts', manageContacts: 'Manage contacts', contactsImportHint: 'Contacts are only accessed after you choose Import.',
+    contactsUnsupported: 'This browser does not support contact import. You can still add people by You and Me ID.',
+    dataStorageHint: 'Your message history and preferences are stored on this device.',
+    storageUsed: 'Local storage used', clearHistory: 'Clear chat history', clearAllData: 'Clear all data and log out',
+    clearAllConfirm: 'This removes this device’s guest ID, chats, call history and settings. Continue?',
+    logoutConfirm: 'Log out and erase this device’s You and Me data?',
+    accountHint: 'A guest profile lives only in this browser. No password or account is required.',
+    securityHint: 'Messages are relayed by the service and are not end-to-end encrypted.',
+    supportHint: 'Need help? Check your connection, share your You and Me ID, and make sure your browser allows microphone or camera access.',
+    savedProfile: 'Profile saved', phoneInvalid: 'Enter a valid Bangladesh mobile number, for example 01712345678.',
+    photoTooLarge: 'Choose a profile image smaller than 120 KB.',
+    photoUnsupported: 'Use a PNG, JPG, WEBP, or GIF profile image.',
+    permissionBeforeUse: 'Your browser will ask permission before this feature starts.',
+    sharingNow: 'You are sharing your screen', stop: 'Stop',
   },
 };
 
@@ -173,12 +176,14 @@ function makeSavedChat() {
 
 function createDefaultApp() {
   const identity = createIdentity();
+  const suffix = identity.id.slice(-4).toLowerCase();
   return {
     identity,
-    profile: { name: `Guest ${identity.id.slice(-4)}` },
+    profile: { name: `Guest ${suffix.toUpperCase()}`, username: `guest${suffix}`, phone: '', phonePublic: false, avatar: '' },
     chats: [makeSavedChat()],
     calls: [],
-    settings: { theme: 'light', language: 'bn', notifications: false, sound: true },
+    contacts: [],
+    settings: { theme: 'light', language: 'en', notifications: false, sound: true, showPresence: true },
   };
 }
 
@@ -191,10 +196,16 @@ function readStoredApp() {
     return {
       ...createDefaultApp(),
       ...value,
-      profile: { name: `Guest ${value.identity.id.slice(-4)}`, ...(value.profile ?? {}) },
+      profile: {
+        name: `Guest ${value.identity.id.slice(-4)}`,
+        username: `guest${value.identity.id.slice(-4).toLowerCase()}`,
+        phone: '', phonePublic: false, avatar: '',
+        ...(value.profile ?? {}),
+      },
       chats,
       calls: Array.isArray(value.calls) ? value.calls.slice(0, 60) : [],
-      settings: { theme: 'light', language: 'bn', notifications: false, sound: true, ...(value.settings ?? {}) },
+      contacts: Array.isArray(value.contacts) ? value.contacts.slice(0, 300) : [],
+      settings: { theme: 'light', notifications: false, sound: true, showPresence: true, ...(value.settings ?? {}), language: 'en' },
     };
   } catch {
     return createDefaultApp();
@@ -205,6 +216,23 @@ function parseGuestId(value) {
   const text = String(value ?? '').trim().toUpperCase();
   const match = text.match(/YM-[A-Z0-9]{6}/);
   return match?.[0] ?? '';
+}
+
+function normaliseUsername(value) {
+  return String(value ?? '').trim().replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 24);
+}
+
+function localBangladeshDigits(value) {
+  let digits = String(value ?? '').replace(/\D/g, '');
+  if (digits.startsWith('00880')) digits = digits.slice(2);
+  if (digits.startsWith('880')) digits = `0${digits.slice(3)}`;
+  return digits;
+}
+
+function normaliseBangladeshPhone(value) {
+  const digits = localBangladeshDigits(value);
+  if (!/^01[3-9]\d{8}$/.test(digits)) return '';
+  return `+880${digits.slice(1)}`;
 }
 
 function initials(value = '') {
@@ -222,7 +250,7 @@ function makeUuid() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function formatTime(value, language = 'bn') {
+function formatTime(value, language = 'en') {
   try {
     return new Intl.DateTimeFormat(language === 'bn' ? 'bn-BD' : 'en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(value));
   } catch {
@@ -230,7 +258,7 @@ function formatTime(value, language = 'bn') {
   }
 }
 
-function formatDay(value, language = 'bn') {
+function formatDay(value, language = 'en') {
   const date = new Date(value);
   const today = new Date();
   const yesterday = new Date();
@@ -252,11 +280,11 @@ function previewText(message, t) {
   return message.text || t.message;
 }
 
-function Avatar({ name, id = '', saved = false, size = 'md', online = false }) {
+function Avatar({ name, id = '', saved = false, size = 'md', online = false, photo = '' }) {
   const [background, foreground] = colorFor(id || name);
   return (
     <span className={`avatar avatar-${size} ${saved ? 'avatar-saved' : ''}`} style={{ '--avatar-bg': background, '--avatar-fg': foreground }}>
-      {saved ? <MessageCircle size={size === 'sm' ? 15 : 19} strokeWidth={2.2} /> : <span>{initials(name)}</span>}
+      {photo && !saved ? <img className="avatar-photo" src={photo} alt="" /> : saved ? <MessageCircle size={size === 'sm' ? 15 : 19} strokeWidth={2.2} /> : <span>{initials(name)}</span>}
       {online && <i className="avatar-online" />}
     </span>
   );
@@ -267,7 +295,7 @@ function BrandMark({ small = false }) {
     <span className={`brand-mark ${small ? 'brand-mark-small' : ''}`} aria-hidden="true">
       <svg viewBox="0 0 48 48" fill="none">
         <path d="M7 13.5A6.5 6.5 0 0 1 13.5 7h15a6.5 6.5 0 0 1 6.5 6.5v7a6.5 6.5 0 0 1-6.5 6.5H21l-7.5 5v-5.15A6.5 6.5 0 0 1 7 20.5v-7Z" fill="white" />
-        <path d="M18 27.5A6.5 6.5 0 0 1 24.5 21h10a6.5 6.5 0 0 1 6.5 6.5v5a6.5 6.5 0 0 1-4.7 6.24V43l-6.8-4.5h-5A6.5 6.5 0 0 1 18 32v-4.5Z" fill="#C7FFEA" />
+        <path d="M18 27.5A6.5 6.5 0 0 1 24.5 21h10a6.5 6.5 0 0 1 6.5 6.5v5a6.5 6.5 0 0 1-4.7 6.24V43l-6.8-4.5h-5A6.5 6.5 0 0 1 18 32v-4.5Z" fill="#DBEAFE" />
       </svg>
     </span>
   );
@@ -277,10 +305,12 @@ function App() {
   const [app, setApp] = useState(readStoredApp);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [onlineUsers, setOnlineUsers] = useState([]);
-  const [activeTab, setActiveTab] = useState('chats');
+  const [activeTab, setActiveTab] = useState('home');
   const [selectedChatId, setSelectedChatId] = useState('saved');
-  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [filter, setFilter] = useState('all');
   const [messageText, setMessageText] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -291,12 +321,17 @@ function App() {
   const [callState, setCallState] = useState(null);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [screenSharePrompt, setScreenSharePrompt] = useState(false);
+  const [screenSharing, setScreenSharing] = useState(false);
+  const [settingsSection, setSettingsSection] = useState('account');
 
   const socketRef = useRef(null);
   const latestAppRef = useRef(app);
   latestAppRef.current = app;
   const selectedChatRef = useRef(selectedChatId);
   selectedChatRef.current = selectedChatId;
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
   const connectionRef = useRef(connectionStatus);
   connectionRef.current = connectionStatus;
   const callRef = useRef(callState);
@@ -314,7 +349,11 @@ function App() {
   const messageEndRef = useRef(null);
   const composerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const profileFileInputRef = useRef(null);
   const recorderRef = useRef(null);
+  const screenStreamRef = useRef(null);
+  const cameraTrackRef = useRef(null);
+  const globalSearchRef = useRef(null);
   const recordingStreamRef = useRef(null);
   const recordingChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
@@ -323,12 +362,36 @@ function App() {
   const typingPeerTimersRef = useRef({});
   const inviteHandledRef = useRef(false);
 
-  const language = app.settings.language === 'en' ? 'en' : 'bn';
-  const t = words[language];
+  const language = 'en';
+  const t = words.en;
   const selectedChat = app.chats.find((chat) => chat.id === selectedChatId) ?? app.chats.find((chat) => chat.id === 'saved') ?? null;
   const selectedIsOnline = Boolean(selectedChat?.peerId && onlineUsers.some((user) => user.id === selectedChat.peerId));
   const otherOnlineUsers = onlineUsers.filter((user) => user.id !== app.identity.id);
   const directChats = app.chats.filter((chat) => chat.kind !== 'saved');
+  const discoveryUsers = useMemo(() => {
+    const people = new Map();
+    directChats.forEach((chat) => people.set(chat.peerId, {
+      id: chat.peerId, peerId: chat.peerId, name: chat.name, username: chat.username || '', phone: chat.phone || '', avatar: chat.avatar || '', online: false, kind: 'direct',
+    }));
+    otherOnlineUsers.forEach((user) => people.set(user.id, { ...user, peerId: user.id, kind: 'direct', online: true }));
+    const localContacts = app.contacts || [];
+    return [...people.values()].map((person) => {
+      const imported = localContacts.find((contact) => localBangladeshDigits(contact.phone) && localBangladeshDigits(contact.phone) === localBangladeshDigits(person.phone));
+      return imported ? { ...person, name: imported.name || person.name, importedName: imported.name } : person;
+    });
+  }, [directChats, otherOnlineUsers, app.contacts]);
+  const globalSearchResults = useMemo(() => {
+    const query = globalSearch.trim().toLowerCase();
+    if (!query) return [];
+    const nameQuery = query.replace(/^@/, '');
+    const phoneQuery = localBangladeshDigits(query);
+    return discoveryUsers.filter((person) => {
+      const searchable = `${person.name || ''} ${person.username || ''} @${person.username || ''} ${person.id || ''}`.toLowerCase();
+      const personDigits = localBangladeshDigits(person.phone || '');
+      return searchable.includes(query) || searchable.includes(nameQuery) || (phoneQuery.length >= 3 && personDigits.includes(phoneQuery));
+    }).slice(0, 12);
+  }, [discoveryUsers, globalSearch]);
+  const storageUsedBytes = useMemo(() => new Blob([JSON.stringify(app)]).size, [app]);
 
   useEffect(() => {
     try {
@@ -362,13 +425,16 @@ function App() {
 
   function receiveRemoteMessage(message) {
     if (!message?.fromId || !message.id) return;
-    const isActive = selectedChatRef.current === message.fromId && document.visibilityState === 'visible';
+    const isActive = activeTabRef.current === 'chats' && selectedChatRef.current === message.fromId && document.visibilityState === 'visible';
     setApp((current) => {
       const existingChat = current.chats.find((chat) => chat.peerId === message.fromId);
       const newChat = existingChat ?? {
         id: message.fromId,
         peerId: message.fromId,
         name: message.senderName || `${t.guest} ${message.fromId.slice(-4)}`,
+        username: message.senderUsername || '',
+        phone: message.senderPhone || '',
+        avatar: message.senderAvatar || '',
         kind: 'direct',
         messages: [],
         unread: 0,
@@ -380,6 +446,9 @@ function App() {
       const updated = {
         ...newChat,
         name: newChat.customName ? newChat.name : message.senderName || newChat.name,
+        username: message.senderUsername || newChat.username || '',
+        phone: message.senderPhone || newChat.phone || '',
+        avatar: message.senderAvatar || newChat.avatar || '',
         messages: [...newChat.messages, received].slice(-180),
         unread: isActive ? 0 : (newChat.unread ?? 0) + 1,
         updatedAt: Number(message.createdAt) || Date.now(),
@@ -396,7 +465,7 @@ function App() {
       const settings = latestAppRef.current.settings;
       if (settings.notifications && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
         try {
-          new Notification(message.senderName || 'You & Me', { body: message.text || message.attachment?.name || t.message });
+          new Notification(message.senderName || 'You and Me', { body: message.text || message.attachment?.name || t.message });
         } catch {
           // Browser notifications are an optional enhancement.
         }
@@ -451,6 +520,7 @@ function App() {
       callId: payload.callId,
       peerId: payload.fromId,
       peerName: payload.fromName || `${t.guest} ${payload.fromId.slice(-4)}`,
+      peerAvatar: payload.fromAvatar || '',
       kind: payload.kind === 'video' ? 'video' : 'audio',
       direction: 'incoming',
       status: 'ringing',
@@ -459,6 +529,10 @@ function App() {
       remoteStream: null,
       muted: false,
       videoOff: false,
+      speakerOn: true,
+      keypadOpen: false,
+      screenSharing: false,
+      cameraFacing: 'user',
     });
   }
   incomingCallRef.current = handleIncomingCall;
@@ -469,10 +543,13 @@ function App() {
 
     socket.on('connect', () => {
       setConnectionStatus('connecting');
+      const latest = latestAppRef.current;
       socket.emit('guest:register', {
         id: app.identity.id,
         key: app.identity.key,
-        name: latestAppRef.current.profile.name,
+        ...latest.profile,
+        phone: latest.profile.phonePublic ? latest.profile.phone : '',
+        showPresence: latest.settings.showPresence,
       }, (result) => {
         if (!result?.ok) {
           setConnectionStatus('offline');
@@ -496,6 +573,7 @@ function App() {
     socket.on('disconnect', () => {
       setConnectionStatus('offline');
       setOnlineUsers([]);
+      setApp((current) => ({ ...current, chats: current.chats.map((chat) => chat.phone ? { ...chat, phone: '' } : chat) }));
     });
     socket.on('connect_error', () => setConnectionStatus('offline'));
     socket.on('presence:update', (users) => {
@@ -505,11 +583,20 @@ function App() {
         const chats = current.chats.map((chat) => {
           if (chat.kind === 'saved') return chat;
           const match = users?.find((user) => user.id === chat.peerId);
-          if (match && chat.name !== match.name && (!chat.customName || chat.name.startsWith('Guest '))) {
-            changed = true;
-            return { ...chat, name: match.name };
+          if (!match) {
+            if (chat.phone) changed = true;
+            return chat.phone ? { ...chat, phone: '' } : chat;
           }
-          return chat;
+          const updated = {
+            ...chat,
+            name: chat.customName ? chat.name : (match.name || chat.name),
+            username: match.username || '',
+            phone: match.phone || '',
+            avatar: match.avatar || '',
+          };
+          const chatChanged = updated.name !== chat.name || updated.username !== chat.username || updated.phone !== chat.phone || updated.avatar !== chat.avatar;
+          if (chatChanged) changed = true;
+          return chatChanged ? updated : chat;
         });
         return changed ? { ...current, chats } : current;
       });
@@ -561,8 +648,14 @@ function App() {
   }, [app.identity.id, app.identity.key]);
 
   useEffect(() => {
-    if (socketRef.current?.connected) socketRef.current.emit('guest:update', { name: app.profile.name });
-  }, [app.profile.name]);
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('guest:update', {
+        ...app.profile,
+        phone: app.profile.phonePublic ? app.profile.phone : '',
+        showPresence: app.settings.showPresence,
+      });
+    }
+  }, [app.profile.name, app.profile.username, app.profile.phone, app.profile.phonePublic, app.profile.avatar, app.settings.showPresence]);
 
   useEffect(() => {
     const inviteId = parseGuestId(new URLSearchParams(window.location.search).get('to'));
@@ -600,8 +693,56 @@ function App() {
     setApp((current) => ({ ...current, settings: { ...current.settings, ...partial } }));
   }
 
-  function updateDisplayName(name) {
-    setApp((current) => ({ ...current, profile: { ...current.profile, name: name.trim().slice(0, 40) || 'You' } }));
+  function updateProfile(profile) {
+    setApp((current) => ({ ...current, profile: { ...current.profile, ...profile } }));
+  }
+
+  function saveProfile(profile) {
+    const phone = profile.phone.trim() ? normaliseBangladeshPhone(profile.phone) : '';
+    if (profile.phone.trim() && !phone) {
+      showToast(t.phoneInvalid);
+      return false;
+    }
+    updateProfile({
+      ...profile,
+      name: profile.name.trim().slice(0, 40) || `Guest ${latestAppRef.current.identity.id.slice(-4)}`,
+      username: normaliseUsername(profile.username),
+      phone,
+      phonePublic: Boolean(profile.phonePublic && phone),
+    });
+    showToast(t.savedProfile);
+    return true;
+  }
+
+  async function importContacts() {
+    const contactsApi = navigator.contacts;
+    if (!contactsApi?.select) {
+      showToast(t.contactsUnsupported);
+      return;
+    }
+    try {
+      const records = await contactsApi.select(['name', 'tel'], { multiple: true });
+      const imported = records.flatMap((record) => (record.tel || []).map((phone, index) => ({
+        name: record.name?.[0] || `${t.guest} ${index + 1}`,
+        phone: normaliseBangladeshPhone(phone) || phone,
+      }))).slice(0, 300);
+      setApp((current) => ({ ...current, contacts: imported }));
+      showToast(`${imported.length} ${t.contacts.toLowerCase()} imported`);
+    } catch {
+      // The user can cancel the browser's contact picker at any time.
+    }
+  }
+
+  function clearAllLocalData() {
+    if (!window.confirm(t.clearAllConfirm)) return;
+    localStorage.removeItem(STORAGE_KEY);
+    window.location.reload();
+  }
+
+  function logoutGuest() {
+    if (!window.confirm(t.logoutConfirm)) return;
+    localStorage.removeItem(STORAGE_KEY);
+    window.location.reload();
   }
 
   function openPeer(peerId, suggestedName = '') {
@@ -621,15 +762,24 @@ function App() {
     setApp((current) => {
       const found = current.chats.find((chat) => chat.peerId === id);
       if (found) {
-        if (suggestedName.trim() && found.name !== suggestedName.trim()) {
-          return { ...current, chats: current.chats.map((chat) => chat.id === found.id ? { ...chat, name: suggestedName.trim(), customName: true } : chat) };
-        }
-        return current;
+        return {
+          ...current,
+          chats: current.chats.map((chat) => chat.id === found.id ? {
+            ...chat,
+            ...(suggestedName.trim() ? { name: suggestedName.trim(), customName: true } : {}),
+            username: online?.username || chat.username || '',
+            phone: online?.phone || chat.phone || '',
+            avatar: online?.avatar || chat.avatar || '',
+          } : chat),
+        };
       }
       const chat = {
         id,
         peerId: id,
         name: initialName,
+        username: online?.username || '',
+        phone: online?.phone || '',
+        avatar: online?.avatar || '',
         customName: Boolean(suggestedName.trim()),
         kind: 'direct',
         messages: [],
@@ -769,7 +919,7 @@ function App() {
 
   async function shareInvite() {
     const url = makeInviteLink();
-    const shareData = { title: 'You & Me', text: t.shareText, url };
+    const shareData = { title: 'You and Me', text: t.shareText, url };
     if (navigator.share) {
       try {
         await navigator.share(shareData);
@@ -927,13 +1077,14 @@ function App() {
     }
   }
 
-  async function startCall(kind) {
-    if (!selectedChat?.peerId) return;
+  async function startCall(kind, target = selectedChat) {
+    const peerId = target?.peerId || (target?.kind === 'direct' ? target.id : '');
+    if (!peerId) return;
     if (!socketRef.current?.connected) {
       showToast(t.callOffline);
       return;
     }
-    if (!onlineUsers.some((user) => user.id === selectedChat.peerId)) {
+    if (!onlineUsers.some((user) => user.id === peerId)) {
       showToast(t.callOffline);
       return;
     }
@@ -942,12 +1093,13 @@ function App() {
       return;
     }
     const callId = makeUuid();
-    const peerId = selectedChat.peerId;
-    const peerName = selectedChat.name;
+    const peerName = target.name || `${t.guest} ${peerId.slice(-4)}`;
+    const peerAvatar = target.avatar || onlineUsers.find((user) => user.id === peerId)?.avatar || '';
     pendingOfferRef.current = null;
     pendingAnswerRef.current = null;
     remoteIceRef.current = [];
-    setCurrentCall({ callId, peerId, peerName, kind, direction: 'outgoing', status: 'ringing', startedAt: Date.now(), localStream: null, remoteStream: null, muted: false, videoOff: false });
+    cameraTrackRef.current = null;
+    setCurrentCall({ callId, peerId, peerName, peerAvatar, kind, direction: 'outgoing', status: 'ringing', startedAt: Date.now(), localStream: null, remoteStream: null, muted: false, videoOff: false, speakerOn: true, keypadOpen: false, screenSharing: false, cameraFacing: 'user' });
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
       if (callRef.current?.callId !== callId) {
@@ -955,6 +1107,7 @@ function App() {
         return;
       }
       localStreamRef.current = stream;
+      cameraTrackRef.current = stream.getVideoTracks()[0] || null;
       setCurrentCall((current) => current?.callId === callId ? { ...current, localStream: stream } : current);
       const pc = makePeerConnection(callId, peerId, stream);
       socketRef.current.emit('call:start', { callId, toId: peerId, kind }, async (result) => {
@@ -987,6 +1140,7 @@ function App() {
         return;
       }
       localStreamRef.current = stream;
+      cameraTrackRef.current = stream.getVideoTracks()[0] || null;
       setCurrentCall((current) => current?.callId === call.callId ? { ...current, status: 'connecting', localStream: stream } : current);
       makePeerConnection(call.callId, call.peerId, stream);
       socketRef.current?.emit('call:respond', { callId: call.callId, accepted: true });
@@ -1008,6 +1162,11 @@ function App() {
     if (notifyPeer) socketRef.current?.emit('call:end', { callId: call.callId, toId: call.peerId });
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    cameraTrackRef.current = null;
+    setScreenSharing(false);
+    setScreenSharePrompt(false);
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     pendingOfferRef.current = null;
@@ -1045,6 +1204,74 @@ function App() {
     setCurrentCall((current) => current ? { ...current, videoOff: nextOff } : current);
   }
 
+  function toggleSpeaker() {
+    setCurrentCall((current) => current ? { ...current, speakerOn: !current.speakerOn } : current);
+  }
+
+  function toggleKeypad() {
+    setCurrentCall((current) => current ? { ...current, keypadOpen: !current.keypadOpen } : current);
+  }
+
+  function sendCallDigit(digit) {
+    const sender = peerConnectionRef.current?.getSenders().find((item) => item.track?.kind === 'audio');
+    if (sender?.dtmf?.canInsertDTMF) sender.dtmf.insertDTMF(String(digit), 120);
+  }
+
+  async function switchCamera() {
+    const call = callRef.current;
+    const track = cameraTrackRef.current;
+    if (!call || !track || typeof track.applyConstraints !== 'function') return;
+    const nextFacing = call.cameraFacing === 'environment' ? 'user' : 'environment';
+    try {
+      await track.applyConstraints({ facingMode: { ideal: nextFacing } });
+      setCurrentCall((current) => current ? { ...current, cameraFacing: nextFacing } : current);
+    } catch {
+      showToast('This device cannot switch cameras during a call.');
+    }
+  }
+
+  function requestScreenShare() {
+    if (callRef.current?.kind !== 'video') return;
+    setScreenSharePrompt(true);
+  }
+
+  async function allowScreenShare() {
+    setScreenSharePrompt(false);
+    if (!navigator.mediaDevices?.getDisplayMedia || !peerConnectionRef.current) {
+      showToast('Screen sharing is not supported in this browser.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const track = stream.getVideoTracks()[0];
+      const sender = peerConnectionRef.current.getSenders().find((item) => item.track?.kind === 'video');
+      if (!track || !sender) {
+        stream.getTracks().forEach((item) => item.stop());
+        showToast('Start a video call before sharing your screen.');
+        return;
+      }
+      screenStreamRef.current = stream;
+      await sender.replaceTrack(track);
+      track.onended = () => stopScreenShare();
+      setScreenSharing(true);
+      setCurrentCall((current) => current ? { ...current, screenSharing: true } : current);
+    } catch {
+      // The browser owns the prompt; cancelling it leaves the call untouched.
+    }
+  }
+
+  async function stopScreenShare() {
+    const sender = peerConnectionRef.current?.getSenders().find((item) => item.track?.kind === 'video');
+    const cameraTrack = cameraTrackRef.current;
+    if (sender && cameraTrack?.readyState === 'live') {
+      try { await sender.replaceTrack(cameraTrack); } catch { /* The call may have ended. */ }
+    }
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setScreenSharing(false);
+    setCurrentCall((current) => current ? { ...current, screenSharing: false } : current);
+  }
+
   function togglePin(chat) {
     if (!chat || chat.kind === 'saved') return;
     updateChat(chat.id, (current) => ({ ...current, pinned: !current.pinned }));
@@ -1065,7 +1292,7 @@ function App() {
           <div className="brand-lockup">
             <BrandMark />
             <div className="brand-copy">
-              <strong>You <span>&amp;</span> Me</strong>
+              <strong>You and Me</strong>
               <small>{t.tagline}</small>
             </div>
           </div>
@@ -1076,12 +1303,13 @@ function App() {
         </header>
 
         <nav className="primary-tabs" aria-label="Main navigation">
+          <button className={activeTab === 'home' ? 'tab-button active' : 'tab-button'} onClick={() => chooseTab('home')}><Home size={17} /><span>{t.home}</span></button>
           <button className={activeTab === 'chats' ? 'tab-button active' : 'tab-button'} onClick={() => chooseTab('chats')}>
-            <MessagesSquare size={18} /><span>{t.chats}</span>
+            <MessagesSquare size={17} /><span>{t.chats}</span>
             {app.chats.reduce((sum, chat) => sum + (chat.unread || 0), 0) > 0 && <b className="tab-count">{app.chats.reduce((sum, chat) => sum + (chat.unread || 0), 0)}</b>}
           </button>
-          <button className={activeTab === 'calls' ? 'tab-button active' : 'tab-button'} onClick={() => chooseTab('calls')}><Phone size={18} /><span>{t.calls}</span></button>
-          <button className={activeTab === 'contacts' ? 'tab-button active' : 'tab-button'} onClick={() => chooseTab('contacts')}><Users size={18} /><span>{t.contacts}</span></button>
+          <button className={activeTab === 'calls' ? 'tab-button active' : 'tab-button'} onClick={() => chooseTab('calls')}><Phone size={17} /><span>{t.calls}</span></button>
+          <button className={activeTab === 'contacts' ? 'tab-button active' : 'tab-button'} onClick={() => chooseTab('contacts')}><Users size={17} /><span>{t.contacts}</span></button>
         </nav>
 
         <div className="sidebar-search-row">
@@ -1109,7 +1337,7 @@ function App() {
                 const isOnline = onlineUsers.some((user) => user.id === chat.peerId);
                 return (
                   <button key={chat.id} className={`chat-list-item ${selectedChatId === chat.id && activeTab === 'chats' ? 'selected' : ''}`} onClick={() => { setSelectedChatId(chat.id); setActiveTab('chats'); setMobileChatOpen(true); setDetailsOpen(false); }} role="listitem">
-                    <Avatar name={chat.kind === 'saved' ? t.saved : chat.name} id={chat.peerId || 'saved'} saved={chat.kind === 'saved'} size="md" online={isOnline} />
+                    <Avatar name={chat.kind === 'saved' ? t.saved : chat.name} id={chat.peerId || 'saved'} saved={chat.kind === 'saved'} size="md" online={isOnline} photo={chat.avatar} />
                     <span className="chat-list-copy">
                       <span className="chat-list-title"><strong>{chat.kind === 'saved' ? t.saved : chat.name}</strong><time>{lastMessage ? formatTime(lastMessage.createdAt, language) : ''}</time></span>
                       <span className="chat-list-preview">
@@ -1124,6 +1352,20 @@ function App() {
               )}
             </div>
           </>
+        )}
+
+        {activeTab === 'home' && (
+          <div className="sidebar-section-list home-sidebar-list">
+            <div className="list-heading"><div><span className="eyebrow">{t.home}</span><strong>{t.peopleOnline}</strong></div><span className="soft-count">{otherOnlineUsers.length}</span></div>
+            {otherOnlineUsers.slice(0, 8).map((user) => (
+              <button className="mini-history-row" key={user.id} onClick={() => openPeer(user.id, user.name)}>
+                <Avatar name={user.name} id={user.id} photo={user.avatar} size="sm" online />
+                <span><strong>{user.name}</strong><small>{user.username ? `@${user.username}` : user.id}</small></span><MessageCircle size={15} />
+              </button>
+            ))}
+            {!otherOnlineUsers.length && <div className="sidebar-empty compact-empty"><Users size={19} /><small>{t.noOnline}</small></div>}
+            <button className="add-contact-wide" onClick={() => chooseTab('contacts')}><Users size={16} />{t.manageContacts}</button>
+          </div>
         )}
 
         {activeTab === 'calls' && (
@@ -1145,8 +1387,8 @@ function App() {
             <div className="list-heading"><div><span className="eyebrow">{t.contacts}</span><strong>{t.onlineNow}</strong></div><span className="soft-count">{otherOnlineUsers.length}</span></div>
             {otherOnlineUsers.filter((user) => !searchTerm || `${user.name} ${user.id}`.toLowerCase().includes(searchTerm.toLowerCase())).map((user) => (
               <button className="mini-history-row" key={user.id} onClick={() => openPeer(user.id, user.name)}>
-                <Avatar name={user.name} id={user.id} size="sm" online />
-                <span><strong>{user.name}</strong><small>{user.id}</small></span><span className="online-small-dot" />
+                <Avatar name={user.name} id={user.id} size="sm" online photo={user.avatar} />
+                <span><strong>{user.name}</strong><small>{user.username ? `@${user.username}` : user.id}</small></span><span className="online-small-dot" />
               </button>
             ))}
             {!otherOnlineUsers.length && <div className="sidebar-empty compact-empty"><Users size={19} /><small>{t.noOnline}</small></div>}
@@ -1157,7 +1399,7 @@ function App() {
         <div className="sidebar-bottom">
           <div className="identity-card">
             <button className="identity-main" onClick={() => setModal('settings')}>
-              <Avatar name={app.profile.name} id={app.identity.id} size="sm" online={connectionStatus === 'connected'} />
+              <Avatar name={app.profile.name} id={app.identity.id} size="sm" online={connectionStatus === 'connected'} photo={app.profile.avatar} />
               <span className="identity-copy"><strong>{app.profile.name}</strong><small>{app.identity.id}</small></span>
             </button>
             <button className="identity-share" title={t.shareInvite} aria-label={t.shareInvite} onClick={shareInvite}><Share2 size={16} /></button>
@@ -1167,6 +1409,33 @@ function App() {
       </aside>
 
       <main className="main-panel">
+        {activeTab === 'home' && (
+          <HomeWorkspace
+            profile={app.profile}
+            identity={app.identity}
+            users={discoveryUsers}
+            recentChats={directChats.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 5)}
+            calls={app.calls.slice(0, 3)}
+            query={globalSearch}
+            searchOpen={globalSearchOpen}
+            results={globalSearchResults}
+            onlineCount={otherOnlineUsers.length}
+            connectionStatus={connectionStatus}
+            t={t}
+            language={language}
+            onQuery={(value) => setGlobalSearch(value)}
+            onFocusSearch={() => setGlobalSearchOpen(true)}
+            onOpenPeer={openPeer}
+            onCall={startCall}
+            onNewChat={() => setModal('new-chat')}
+            onChats={() => chooseTab('chats')}
+            onContacts={() => chooseTab('contacts')}
+            onCalls={() => chooseTab('calls')}
+            onSettings={() => setModal('settings')}
+            onShare={shareInvite}
+            onBack={() => setMobileChatOpen(false)}
+          />
+        )}
         {activeTab === 'chats' && selectedChat && (
           <ConversationView
             chat={selectedChat}
@@ -1209,16 +1478,21 @@ function App() {
           <ContactsWorkspace
             contacts={directChats}
             onlineUsers={otherOnlineUsers}
-            searchTerm={searchTerm}
+            importedContacts={app.contacts}
+            query={globalSearch}
             identity={app.identity}
             t={t}
+            onSearch={setGlobalSearch}
             onOpenPeer={openPeer}
+            onCall={startCall}
             onNewChat={() => setModal('new-chat')}
             onCopyId={() => copyText(app.identity.id)}
             onShare={shareInvite}
             onBack={() => setMobileChatOpen(false)}
+            onImportContacts={importContacts}
           />
         )}
+        {activeTab !== 'chats' && <MobileBottomNav activeTab={activeTab} onSelect={chooseTab} onSettings={() => setModal('settings')} t={t} />}
       </main>
 
       {modal === 'new-chat' && (
@@ -1228,11 +1502,23 @@ function App() {
         <SettingsDialog
           t={t}
           app={app}
+          section={settingsSection}
+          onSectionChange={setSettingsSection}
+          storageUsed={storageUsedBytes}
           onClose={() => setModal('')}
-          onSaveName={(name) => { updateDisplayName(name); showToast(t.nameSaved); }}
+          onSaveProfile={saveProfile}
           onSettings={updateSettings}
           onCopy={() => copyText(app.identity.id)}
           onShare={shareInvite}
+          onImportContacts={importContacts}
+          onLogout={logoutGuest}
+          onClearHistory={() => {
+            if (!window.confirm('Clear all local conversations and call history?')) return;
+            setApp((current) => ({ ...current, chats: [makeSavedChat()], calls: [] }));
+          }}
+          onClearAll={clearAllLocalData}
+          onPhotoTooLarge={() => showToast(t.photoTooLarge)}
+          onPhotoUnsupported={() => showToast(t.photoUnsupported)}
           onNotify={async () => {
             if (!('Notification' in window)) { showToast(t.enableNotifications); return; }
             const permission = await Notification.requestPermission();
@@ -1250,9 +1536,123 @@ function App() {
           onEnd={() => closeCall('ended', true)}
           onMute={toggleCallMute}
           onVideo={toggleCallVideo}
+          onSpeaker={toggleSpeaker}
+          onKeypad={toggleKeypad}
+          onDigit={sendCallDigit}
+          onScreenShare={screenSharing ? stopScreenShare : requestScreenShare}
+          onSwitchCamera={switchCamera}
         />
       )}
+      {screenSharePrompt && <ScreenSharePrompt t={t} onCancel={() => setScreenSharePrompt(false)} onAllow={allowScreenShare} />}
       {toast && <div className="toast-message" role="status">{toast}</div>}
+    </div>
+  );
+}
+
+function MobileBottomNav({ activeTab, onSelect, onSettings, t }) {
+  return <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+    <button className={activeTab === 'home' ? 'active' : ''} onClick={() => onSelect('home')}><Home size={18} /><span>{t.home}</span></button>
+    <button className={activeTab === 'chats' ? 'active' : ''} onClick={() => onSelect('chats')}><MessagesSquare size={18} /><span>{t.chats}</span></button>
+    <button className={activeTab === 'calls' ? 'active' : ''} onClick={() => onSelect('calls')}><Phone size={18} /><span>{t.calls}</span></button>
+    <button className={activeTab === 'contacts' ? 'active' : ''} onClick={() => onSelect('contacts')}><Users size={18} /><span>{t.contacts}</span></button>
+    <button onClick={onSettings}><Settings size={18} /><span>{t.settings}</span></button>
+  </nav>;
+}
+
+function HomeWorkspace({ profile, identity, users, recentChats, calls, query, searchOpen, results, onlineCount, connectionStatus, t, language, onQuery, onFocusSearch, onOpenPeer, onCall, onNewChat, onChats, onContacts, onCalls, onSettings, onShare, onBack }) {
+  const onlineUsers = users.filter((user) => user.online);
+  const idQuery = parseGuestId(query);
+  return (
+    <section className="workspace-page home-page">
+      <header className="workspace-header home-header">
+        <button className="mobile-workspace-back back-button" onClick={onBack} aria-label={t.home}><ChevronLeft size={22} /></button>
+        <div className="workspace-title"><span className="eyebrow">You and Me · {connectionStatus === 'connected' ? t.connected : t.connecting}</span><h1>{t.welcomeBack}, {profile.name}</h1><p>{t.heroDescription}</p></div>
+        <button className="home-settings-button" onClick={onSettings} aria-label={t.settings}><Settings size={18} /><span>{t.settings}</span></button>
+      </header>
+      <div className="workspace-content home-content">
+        <section className="home-hero">
+          <div className="home-hero-copy">
+            <span className="home-kicker"><span className="home-kicker-dot" />NO ACCOUNT NEEDED</span>
+            <h2>{t.heroHeadline}</h2>
+            <p>{t.heroDescription}</p>
+            <div className="global-search-wrap">
+              <label className="global-search">
+                <Search size={20} />
+                <input
+                  value={query}
+                  onChange={(event) => onQuery(event.target.value)}
+                  onFocus={onFocusSearch}
+                  onKeyDown={(event) => { if (event.key === 'Enter' && idQuery) onOpenPeer(idQuery); }}
+                  placeholder={t.globalSearchPlaceholder}
+                  aria-label={t.globalSearchPlaceholder}
+                />
+                {query && <button type="button" className="global-clear" onClick={() => onQuery('')} aria-label={t.close}><X size={16} /></button>}
+              </label>
+              {searchOpen && query.trim() && (
+                <div className="global-results-panel">
+                  <div className="global-results-heading"><span>{t.searchPeopleHint}</span><span>{results.length}</span></div>
+                  {results.length ? results.map((person) => <PersonCard key={person.id} person={person} t={t} compact onMessage={() => onOpenPeer(person.id, person.name)} onCall={(kind) => onCall(kind, person)} />) : idQuery ? (
+                    <button className="id-search-fallback" onClick={() => onOpenPeer(idQuery)}><Hash size={17} /><span><strong>{idQuery}</strong><small>{t.searchIdHint}</small></span><MessageCircle size={17} /></button>
+                  ) : <div className="global-no-results"><Search size={18} /><span>{t.noSearchResults}</span><small>{t.searchIdHint}</small></div>}
+                </div>
+              )}
+            </div>
+            <div className="home-search-hint"><ShieldCheck size={13} />{t.searchPeopleHint}</div>
+            <div className="hero-quick-actions">
+              <button onClick={onNewChat}><span className="quick-icon message-quick"><MessageCircle size={16} /></span>{t.startMessage}</button>
+              <button onClick={onContacts}><span className="quick-icon call-quick"><Phone size={16} /></span>{t.audioCall}</button>
+              <button onClick={onShare}><span className="quick-icon share-quick"><Share2 size={16} /></span>{t.shareInvite}</button>
+            </div>
+          </div>
+          <div className="home-hero-art" aria-hidden="true">
+            <span className="hero-orbit hero-orbit-one" /><span className="hero-orbit hero-orbit-two" />
+            <div className="hero-app-card">
+              <div className="hero-card-top"><BrandMark small /><span><strong>You and Me</strong><small>Connection, made simple</small></span><i /></div>
+              <div className="hero-chat-preview"><Avatar name={onlineUsers[0]?.name || profile.name} id={onlineUsers[0]?.id || identity.id} photo={onlineUsers[0]?.avatar || profile.avatar} size="sm" online={onlineUsers.length > 0} /><span><strong>{onlineUsers[0]?.name || 'Your people'}</strong><small>{onlineUsers.length ? t.onlineNow : 'Find someone to start chatting'}</small></span><MessageCircle size={17} /></div>
+              <div className="hero-message-preview"><span>Hey, are you free to talk?</span><small>10:24 AM <CheckCheck size={12} /></small></div>
+              <div className="hero-card-footer"><span><Phone size={15} /> Audio</span><span><Video size={15} /> Video</span><span><ShieldCheck size={15} /> Private</span></div>
+            </div>
+            <span className="hero-floating-dot dot-a" /><span className="hero-floating-dot dot-b" />
+            <div className="hero-online-badge"><i />{onlineCount} online</div>
+          </div>
+        </section>
+
+        <div className="home-grid">
+          <section className="home-section-card recent-section">
+            <header className="home-section-heading"><div><span className="section-icon blue-icon"><MessagesSquare size={17} /></span><span><strong>{t.recentChats}</strong><small>{t.noRecentChats}</small></span></div><button className="text-icon-button" onClick={onChats}>{t.viewAll}<ArrowUpRight size={14} /></button></header>
+            {recentChats.length ? <div className="home-recent-list">{recentChats.map((chat) => {
+              const online = onlineUsers.some((person) => person.id === chat.peerId);
+              const last = chat.messages.at(-1);
+              return <button className="home-recent-row" key={chat.id} onClick={() => onOpenPeer(chat.peerId, chat.name)}><Avatar name={chat.name} id={chat.peerId} photo={chat.avatar} size="md" online={online} /><span className="home-recent-main"><strong>{chat.name}</strong><small>{last ? (last.text || last.attachment?.name || t.message) : chat.peerId}</small></span><span className="home-recent-time">{last ? formatTime(last.createdAt, language) : ''}{chat.unread > 0 && <b>{chat.unread}</b>}</span></button>;
+            })}</div> : <div className="recent-empty"><div className="recent-empty-icon"><MessageCircle size={19} /></div><strong>{t.noRecentChats}</strong><p>{t.searchIdHint}</p><button className="primary-button compact-button" onClick={onNewChat}><Plus size={15} />{t.newChat}</button></div>}
+          </section>
+
+          <aside className="home-side-column">
+            <section className="home-section-card online-section">
+              <header className="home-section-heading"><div><span className="section-icon green-icon"><span className="online-small-dot" /></span><span><strong>{t.peopleOnline}</strong><small>{onlineCount} online now</small></span></div><button className="icon-only-link" onClick={onContacts} aria-label={t.contacts}><ArrowUpRight size={16} /></button></header>
+              {onlineUsers.length ? <div className="online-preview-list">{onlineUsers.slice(0, 4).map((person) => <button key={person.id} className="online-preview-row" onClick={() => onOpenPeer(person.id, person.name)}><Avatar name={person.name} id={person.id} photo={person.avatar} size="sm" online /><span><strong>{person.name}</strong><small>{person.username ? `@${person.username}` : person.id}</small></span><MessageCircle size={15} /></button>)}</div> : <div className="online-empty"><Users size={18} /><span>{t.noOnline}</span></div>}
+              <button className="online-section-link" onClick={onContacts}>{t.manageContacts}<ArrowUpRight size={14} /></button>
+            </section>
+            <section className="my-id-home-card"><div className="my-id-home-icon"><BrandMark small /></div><span><small>{t.yourId}</small><strong>{identity.id}</strong></span><button onClick={onShare} aria-label={t.shareInvite}><Share2 size={16} /></button></section>
+            {calls.length > 0 && <section className="home-section-card home-call-section"><header className="home-section-heading"><div><span className="section-icon lavender-icon"><Phone size={16} /></span><span><strong>{t.callHistory}</strong><small>Recent activity</small></span></div><button className="icon-only-link" onClick={onCalls} aria-label={t.calls}><ArrowUpRight size={16} /></button></header>{calls.slice(0, 2).map((call) => <div className="home-call-row" key={call.id}><Avatar name={call.peerName} id={call.peerId} size="sm" /><span><strong>{call.peerName}</strong><small>{call.kind === 'video' ? t.videoCall : t.audioCall}</small></span><time>{formatTime(call.at, language)}</time></div>)}</section>}
+          </aside>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PersonCard({ person, t, onMessage, onCall, compact = false }) {
+  return (
+    <div className={`person-result ${compact ? 'person-result-compact' : ''}`}>
+      <Avatar name={person.name} id={person.id} photo={person.avatar} size={compact ? 'sm' : 'md'} online={person.online} />
+      <div className="person-result-copy"><strong>{person.name}</strong><span>{person.username ? `@${person.username}` : person.id}{person.phone ? ` · ${person.phone}` : ''}</span></div>
+      <span className={`person-presence ${person.online ? 'presence-online' : ''}`}><i />{person.online ? t.online : t.offline}</span>
+      <div className="person-result-actions">
+        <button title={t.startMessage} aria-label={t.startMessage} onClick={onMessage}><MessageCircle size={15} /></button>
+        <button title={t.audioCall} aria-label={t.audioCall} onClick={() => onCall('audio')}><Phone size={15} /></button>
+        <button title={t.videoCall} aria-label={t.videoCall} onClick={() => onCall('video')}><Video size={15} /></button>
+      </div>
     </div>
   );
 }
@@ -1271,7 +1671,7 @@ function ConversationView({
         <header className="conversation-header">
           <div className="conversation-person">
             {mobile && <button className="back-button" onClick={onBack} aria-label={t.chats}><ChevronLeft size={22} /></button>}
-            <Avatar name={peerName} id={chat.peerId || 'saved'} saved={isSaved} size="lg" online={isOnline} />
+            <Avatar name={peerName} id={chat.peerId || 'saved'} saved={isSaved} size="lg" online={isOnline} photo={chat.avatar} />
             <div className="person-meta">
               <strong>{peerName}</strong>
               <span className={isOnline ? 'person-status online-text' : 'person-status'}>
@@ -1306,7 +1706,7 @@ function ConversationView({
               </div>
             ) : (
               <div className="empty-thread-card contact-thread-card">
-                <Avatar name={peerName} id={chat.peerId} size="xl" online={isOnline} />
+                <Avatar name={peerName} id={chat.peerId} size="xl" online={isOnline} photo={chat.avatar} />
                 <h2>{peerName}</h2>
                 <span className="id-badge">{chat.peerId}</span>
                 <p>{t.startConversation}</p>
@@ -1364,7 +1764,7 @@ function ConversationView({
       {detailsOpen && (
         <aside className="details-panel">
           <header><strong>{t.profile}</strong><button className="icon-button" onClick={detailsProps.onClose} aria-label={t.close}><X size={18} /></button></header>
-          <div className="details-profile"><Avatar name={peerName} id={chat.peerId || 'saved'} saved={isSaved} size="xl" online={isOnline} /><strong>{peerName}</strong><span>{isSaved ? t.privateSpace : chat.peerId}</span></div>
+          <div className="details-profile"><Avatar name={peerName} id={chat.peerId || 'saved'} saved={isSaved} size="xl" online={isOnline} photo={chat.avatar} /><strong>{peerName}</strong><span>{isSaved ? t.privateSpace : chat.peerId}</span></div>
           <div className="details-actions">
             {!isSaved && <button onClick={detailsProps.onPin}><Pin size={17} /><span>{chat.pinned ? t.unpinChat : t.pinChat}</span></button>}
             <button onClick={detailsProps.onCopyPeer}><Copy size={17} /><span>{t.copyId}</span></button>
@@ -1406,7 +1806,7 @@ function CallsWorkspace({ calls, t, language, onOpenPeer, onNewChat, onBack }) {
     <section className="workspace-page calls-page">
       <header className="workspace-header">
         <button className="mobile-workspace-back back-button" onClick={onBack} aria-label={t.chats}><ChevronLeft size={22} /></button>
-        <div className="workspace-title"><span className="eyebrow">You &amp; Me</span><h1>{t.calls}</h1><p>{t.callHistory}</p></div>
+        <div className="workspace-title"><span className="eyebrow">You and Me</span><h1>{t.calls}</h1><p>{t.callHistory}</p></div>
         <button className="primary-button" onClick={onNewChat}><Plus size={17} />{t.newChat}</button>
       </header>
       <div className="workspace-content">
@@ -1434,27 +1834,39 @@ function CallsWorkspace({ calls, t, language, onOpenPeer, onNewChat, onBack }) {
   );
 }
 
-function ContactsWorkspace({ contacts, onlineUsers, searchTerm, identity, t, onOpenPeer, onNewChat, onCopyId, onShare, onBack }) {
-  const query = searchTerm.trim().toLowerCase();
-  const online = onlineUsers.filter((user) => `${user.name} ${user.id}`.toLowerCase().includes(query));
-  const existing = contacts.filter((contact) => !onlineUsers.some((user) => user.id === contact.peerId) && (!query || `${contact.name} ${contact.peerId}`.toLowerCase().includes(query)));
+function ContactsWorkspace({ contacts, onlineUsers, identity, importedContacts, query, t, onSearch, onOpenPeer, onCall, onNewChat, onCopyId, onShare, onBack, onImportContacts }) {
+  const people = new Map();
+  contacts.forEach((contact) => people.set(contact.peerId, { ...contact, id: contact.peerId, online: false, kind: 'direct' }));
+  onlineUsers.forEach((user) => people.set(user.id, { ...user, id: user.id, peerId: user.id, online: true, kind: 'direct' }));
+  const allPeople = [...people.values()];
+  const normalized = query.trim().toLowerCase().replace(/^@/, '');
+  const digits = localBangladeshDigits(query);
+  const filteredPeople = allPeople.filter((person) => {
+    if (!normalized) return true;
+    const text = `${person.name || ''} ${person.username || ''} @${person.username || ''} ${person.id || ''}`.toLowerCase();
+    return text.includes(normalized) || (digits.length >= 3 && localBangladeshDigits(person.phone).includes(digits));
+  });
+  const online = filteredPeople.filter((person) => person.online);
+  const offline = filteredPeople.filter((person) => !person.online);
   return (
     <section className="workspace-page contacts-page">
       <header className="workspace-header">
-        <button className="mobile-workspace-back back-button" onClick={onBack} aria-label={t.chats}><ChevronLeft size={22} /></button>
-        <div className="workspace-title"><span className="eyebrow">You &amp; Me</span><h1>{t.contacts}</h1><p>{t.onlineListHint}</p></div>
-        <button className="primary-button" onClick={onNewChat}><UserPlus size={17} />{t.addContact}</button>
+        <button className="mobile-workspace-back back-button" onClick={onBack} aria-label={t.home}><ChevronLeft size={22} /></button>
+        <div className="workspace-title"><span className="eyebrow">You and Me</span><h1>{t.contacts}</h1><p>{t.onlineListHint}</p></div>
+        <div className="workspace-header-actions"><button className="secondary-button" onClick={onImportContacts}><ContactRound size={16} />{t.contactsImport}</button><button className="primary-button" onClick={onNewChat}><UserPlus size={17} />{t.addContact}</button></div>
       </header>
       <div className="workspace-content contacts-content">
+        <div className="contacts-search-row"><label className="contacts-search"><Search size={18} /><input value={query} onChange={(event) => onSearch(event.target.value)} placeholder={t.globalSearchPlaceholder} /><span>LIVE</span></label><small>Search currently visible You and Me users and saved contacts.</small></div>
         <div className="my-id-card">
           <div className="my-id-mark"><Share2 size={21} /></div>
           <div className="my-id-copy"><span className="eyebrow">{t.yourId}</span><strong>{identity.id}</strong><small>{t.newChatHint}</small></div>
           <div className="my-id-actions"><button className="soft-action" onClick={onCopyId}><Copy size={15} />{t.copyId}</button><button className="primary-button compact-button" onClick={onShare}><Share2 size={15} />{t.shareInvite}</button></div>
         </div>
-        <div className="content-section-heading"><div><span className="section-icon green-icon"><span className="online-small-dot" /></span><div><h2>{t.onlineNow}</h2><p>{online.length} {t.online}</p></div></div></div>
-        {online.length ? <div className="contact-card-grid">{online.map((user) => <button key={user.id} className="contact-card" onClick={() => onOpenPeer(user.id, user.name)}><Avatar name={user.name} id={user.id} size="lg" online /><span className="contact-card-text"><strong>{user.name}</strong><small>{user.id}</small></span><span className="contact-card-action"><MessageCircle size={17} /></span></button>)}</div> : <div className="inline-empty"><Users size={18} /><span>{t.noOnline}</span></div>}
-        <div className="content-section-heading contact-heading"><div><span className="section-icon lavender-icon"><Users size={17} /></span><div><h2>{t.yourContacts}</h2><p>{existing.length} {t.contacts}</p></div></div><button className="text-icon-button" onClick={onNewChat}><Plus size={15} />{t.addContact}</button></div>
-        {existing.length ? <div className="contact-card-grid">{existing.map((contact) => <button key={contact.id} className="contact-card" onClick={() => onOpenPeer(contact.peerId, contact.name)}><Avatar name={contact.name} id={contact.peerId} size="lg" /><span className="contact-card-text"><strong>{contact.name}</strong><small>{contact.peerId}</small></span><span className="contact-card-action"><MessageCircle size={17} /></span></button>)}</div> : <div className="inline-empty"><UserPlus size={18} /><span>{t.noContacts}</span><button onClick={onNewChat}>{t.addContact}</button></div>}
+        <div className="content-section-heading"><div><span className="section-icon green-icon"><span className="online-small-dot" /></span><div><h2>{t.onlineNow}</h2><p>{online.length} online now</p></div></div></div>
+        {online.length ? <div className="people-directory-grid">{online.map((person) => <PersonCard key={person.id} person={person} t={t} onMessage={() => onOpenPeer(person.id, person.name)} onCall={(kind) => onCall(kind, person)} />)}</div> : <div className="inline-empty"><Users size={18} /><span>{query ? t.noSearchResults : t.noOnline}</span></div>}
+        <div className="content-section-heading contact-heading"><div><span className="section-icon lavender-icon"><Users size={17} /></span><div><h2>{t.yourContacts}</h2><p>{offline.length} saved contacts</p></div></div><button className="text-icon-button" onClick={onNewChat}><Plus size={15} />{t.addContact}</button></div>
+        {offline.length ? <div className="people-directory-grid">{offline.map((person) => <PersonCard key={person.id} person={person} t={t} onMessage={() => onOpenPeer(person.id, person.name)} onCall={(kind) => onCall(kind, person)} />)}</div> : <div className="inline-empty"><UserPlus size={18} /><span>{t.noContacts}</span><button onClick={onNewChat}>{t.addContact}</button></div>}
+        {importedContacts?.length > 0 && <div className="imported-contacts-note"><ContactRound size={15} />{importedContacts.length} contacts imported on this device. Their phone details stay private here.</div>}
       </div>
     </section>
   );
@@ -1480,7 +1892,7 @@ function NewChatDialog({ t, identity, onClose, onStart, onCopy }) {
         <span className="eyebrow">{t.startNew}</span>
         <h2>{t.newChat}</h2>
         <p>{t.newChatHint}</p>
-        <label className="field-label">You &amp; Me ID</label>
+        <label className="field-label">You and Me ID</label>
         <input ref={inputRef} className={`text-field id-field ${invalid ? 'field-invalid' : ''}`} value={rawId} onChange={(event) => { setRawId(event.target.value.toUpperCase()); setInvalid(false); }} placeholder={t.idPlaceholder} autoComplete="off" />
         {invalid && <small className="field-error">{t.invalidId}</small>}
         <label className="field-label optional-label">{t.nameOptional}</label>
@@ -1492,52 +1904,160 @@ function NewChatDialog({ t, identity, onClose, onStart, onCopy }) {
   );
 }
 
-function SettingsDialog({ t, app, onClose, onSaveName, onSettings, onCopy, onShare, onNotify }) {
-  const [name, setName] = useState(app.profile.name);
+function SettingsDialog({
+  t, app, section, onSectionChange, onClose, onSaveProfile, onSettings, onCopy, onShare,
+  onNotify, onImportContacts, onLogout, onClearHistory, onClearAll, storageUsed, onPhotoTooLarge, onPhotoUnsupported,
+}) {
+  const [draft, setDraft] = useState({
+    name: app.profile.name,
+    username: app.profile.username || '',
+    phone: app.profile.phone || '',
+    phonePublic: Boolean(app.profile.phonePublic),
+    avatar: app.profile.avatar || '',
+  });
   const [noticePermission, setNoticePermission] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-  const isDark = app.settings.theme === 'dark';
+  const photoInputRef = useRef(null);
+  const sections = [
+    { key: 'account', label: t.account, icon: UserRound },
+    { key: 'privacy', label: t.privacy, icon: ShieldCheck },
+    { key: 'notifications', label: t.notifications, icon: Bell },
+    { key: 'data', label: t.dataStorage, icon: HardDrive },
+    { key: 'appearance', label: t.appearance, icon: Sun },
+    { key: 'calls', label: t.callsSettings, icon: Phone },
+    { key: 'contacts', label: t.contactsSettings, icon: ContactRound },
+    { key: 'security', label: t.security, icon: LockKeyhole },
+    { key: 'support', label: t.support, icon: CircleHelp },
+    { key: 'logout', label: t.logout, icon: LogOut },
+  ];
+  const activeSection = sections.find((item) => item.key === section) || sections[0];
+
   async function enableNotifications() {
     await onNotify();
     if (typeof Notification !== 'undefined') setNoticePermission(Notification.permission);
   }
+
+  async function onPhotoSelected(event) {
+    const photo = event.target.files?.[0];
+    event.target.value = '';
+    if (!photo) return;
+    if (!/^image\/(?:png|jpeg|webp|gif)$/i.test(photo.type)) {
+      onPhotoUnsupported();
+      return;
+    }
+    if (photo.size > 120 * 1024) {
+      onPhotoTooLarge();
+      return;
+    }
+    try {
+      const avatar = await readAsDataUrl(photo);
+      setDraft((current) => ({ ...current, avatar }));
+    } catch {
+      onPhotoTooLarge();
+    }
+  }
+
+  function saveDraft() {
+    if (onSaveProfile(draft)) {
+      const phone = normaliseBangladeshPhone(draft.phone);
+      setDraft((current) => ({ ...current, phone, phonePublic: Boolean(current.phonePublic && phone), username: normaliseUsername(current.username) }));
+    }
+  }
+
   return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="dialog-card settings-dialog">
-        <header className="settings-dialog-header"><div><span className="eyebrow">You &amp; Me</span><h2>{t.settings}</h2></div><button className="dialog-close static-close" onClick={onClose} aria-label={t.close}><X size={19} /></button></header>
-        <div className="settings-scroll">
-          <div className="settings-profile-card">
-            <Avatar name={app.profile.name} id={app.identity.id} size="xl" />
-            <div className="settings-profile-data"><span className="eyebrow">{t.profile}</span><strong>{app.identity.id}</strong><small>{t.privacy}</small></div>
-            <button className="small-copy-button" onClick={onCopy} aria-label={t.copyId}><Copy size={16} /></button>
+    <div className="modal-backdrop settings-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="dialog-card settings-dialog settings-dialog-full">
+        <header className="settings-dialog-header"><div><span className="eyebrow">You and Me</span><h2>{t.settings}</h2></div><button className="dialog-close static-close" onClick={onClose} aria-label={t.close}><X size={19} /></button></header>
+        <div className="settings-layout">
+          <nav className="settings-nav" aria-label="Settings sections">
+            {sections.map(({ key, label, icon: Icon }) => <button key={key} className={`settings-nav-item ${section === key ? 'selected' : ''} ${key === 'logout' ? 'logout-nav-item' : ''}`} onClick={() => onSectionChange(key)}><Icon size={16} /><span>{label}</span>{section === key && <i />}</button>)}
+          </nav>
+          <div className="settings-panel">
+            <div className="settings-panel-heading"><span className="section-icon blue-icon"><activeSection.icon size={18} /></span><div><h3>{activeSection.label}</h3><p>{t.settingsHint}</p></div></div>
+            <div className="settings-scroll">
+              {section === 'account' && <>
+                <div className="settings-profile-card">
+                  <Avatar name={draft.name} id={app.identity.id} size="xl" photo={draft.avatar} />
+                  <div className="settings-profile-data"><span className="eyebrow">{t.profile}</span><strong>{app.identity.id}</strong><small>{t.accountHint}</small></div>
+                  <button className="secondary-button photo-change-button" onClick={() => photoInputRef.current?.click()}><Camera size={15} />{t.changePhoto}</button>
+                  <input ref={photoInputRef} type="file" accept="image/*" className="hidden-file-input" onChange={onPhotoSelected} />
+                </div>
+                {draft.avatar && <button className="remove-photo-button" onClick={() => setDraft((current) => ({ ...current, avatar: '' }))}>{t.removePhoto}</button>}
+                <label className="field-label">{t.displayName}</label>
+                <input className="text-field" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} maxLength={40} />
+                <label className="field-label">{t.username}</label>
+                <div className="username-input-wrap"><span>@</span><input className="text-field" value={draft.username} onChange={(event) => setDraft((current) => ({ ...current, username: normaliseUsername(event.target.value) }))} placeholder="yourname" maxLength={24} /></div>
+                <label className="field-label">{t.phoneOptional}</label>
+                <input className="text-field" value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))} placeholder="+880 1712 345678" inputMode="tel" maxLength={18} />
+                <p className="field-helper">Your number stays private unless you explicitly make it searchable.</p>
+                <div className="account-id-row"><span><small>{t.yourId}</small><strong>{app.identity.id}</strong></span><div><button className="small-copy-button" onClick={onCopy} aria-label={t.copyId}><Copy size={16} /></button><button className="small-copy-button" onClick={onShare} aria-label={t.shareInvite}><Share2 size={16} /></button></div></div>
+                <button className="primary-button settings-save-button" onClick={saveDraft}>{t.save}</button>
+              </>}
+
+              {section === 'privacy' && <>
+                <button className="setting-toggle-row setting-card-row" onClick={() => onSettings({ showPresence: !app.settings.showPresence })}><span className="setting-row-icon"><Users size={17} /></span><span><strong>{t.showPresence}</strong><small>{t.presenceHint}</small></span><span className={`toggle-switch ${app.settings.showPresence ? 'toggle-on' : ''}`}><i /></span></button>
+                <button className="setting-toggle-row setting-card-row" onClick={() => setDraft((current) => ({ ...current, phonePublic: !current.phonePublic }))}><span className="setting-row-icon"><Smartphone size={17} /></span><span><strong>{t.phoneVisibility}</strong><small>{t.phonePrivacyHint}</small></span><span className={`toggle-switch ${draft.phonePublic ? 'toggle-on' : ''}`}><i /></span></button>
+                <div className="privacy-card"><ShieldCheck size={18} /><div><strong>{t.privacy}</strong><p>{t.privacyHint}</p><small>{t.phonePrivacyHint}</small></div></div>
+                <button className="primary-button settings-save-button" onClick={saveDraft}>{t.save}</button>
+              </>}
+
+              {section === 'notifications' && <>
+                <button className="setting-toggle-row setting-card-row" onClick={() => app.settings.notifications ? onSettings({ notifications: false }) : enableNotifications()}><span className="setting-row-icon"><Bell size={17} /></span><span><strong>{t.enableNotifications}</strong><small>{noticePermission === 'granted' ? 'Browser permission granted' : 'Permission is requested only after you enable this.'}</small></span><span className={`toggle-switch ${app.settings.notifications ? 'toggle-on' : ''}`}><i /></span></button>
+                <button className="setting-toggle-row setting-card-row" onClick={() => onSettings({ sound: !app.settings.sound })}><span className="setting-row-icon">{app.settings.sound ? <Volume2 size={17} /> : <VolumeX size={17} />}</span><span><strong>{t.sound}</strong><small>Play a short tone for new messages while the tab is open.</small></span><span className={`toggle-switch ${app.settings.sound ? 'toggle-on' : ''}`}><i /></span></button>
+              </>}
+
+              {section === 'data' && <>
+                <div className="storage-meter-card"><div className="storage-meter-icon"><HardDrive size={18} /></div><div className="storage-meter-copy"><strong>{t.storageUsed}</strong><small>{t.dataStorageHint}</small></div><b>{formatBytes(storageUsed)}</b></div>
+                <div className="storage-meter-track"><i style={{ width: `${Math.min(100, Math.max(4, storageUsed / (5 * 1024 * 1024) * 100))}%` }} /></div>
+                <button className="setting-action-row" onClick={onClearHistory}><span className="setting-row-icon"><Trash2 size={17} /></span><span><strong>{t.clearHistory}</strong><small>Remove conversations and call history but keep this guest ID.</small></span><ChevronLeft size={16} /></button>
+                <button className="setting-action-row danger-row" onClick={onClearAll}><span className="setting-row-icon"><LogOut size={17} /></span><span><strong>{t.clearAllData}</strong><small>Erase profile, guest ID, messages and settings from this browser.</small></span><ChevronLeft size={16} /></button>
+              </>}
+
+              {section === 'appearance' && <>
+                <div className="appearance-options"><button className={`appearance-option ${app.settings.theme !== 'dark' ? 'selected' : ''}`} onClick={() => onSettings({ theme: 'light' })}><span className="appearance-preview light-preview"><i /><i /><i /></span><strong>{t.light}</strong><small>Clean blue and white</small></button><button className={`appearance-option ${app.settings.theme === 'dark' ? 'selected' : ''}`} onClick={() => onSettings({ theme: 'dark' })}><span className="appearance-preview dark-preview"><i /><i /><i /></span><strong>{t.dark}</strong><small>Easy on the eyes</small></button></div>
+                <div className="theme-palette-row"><span><i className="palette-blue" />Blue</span><span><i className="palette-green" />Success</span><span><i className="palette-gray" />Neutral</span></div>
+              </>}
+
+              {section === 'calls' && <>
+                <div className="permission-info-card"><span className="permission-info-icon"><Mic size={17} /></span><span><strong>Microphone</strong><small>Your browser asks for access only when you start or answer an audio/video call or record a voice message.</small></span></div>
+                <div className="permission-info-card"><span className="permission-info-icon"><Camera size={17} /></span><span><strong>Camera</strong><small>Your browser asks for access only when you start or answer a video call.</small></span></div>
+                <div className="permission-info-card"><span className="permission-info-icon"><MonitorUp size={17} /></span><span><strong>Screen sharing</strong><small>The screen picker opens only after you choose Share screen during a video call.</small></span></div>
+                <div className="settings-note"><ShieldCheck size={16} />{t.permissionBeforeUse}</div>
+              </>}
+
+              {section === 'contacts' && <>
+                <div className="settings-info-block"><ContactRound size={21} /><strong>{t.contactsImport}</strong><p>{t.contactsImportHint}</p><small>Imported phone-book data remains on this device and is never published to search.</small></div>
+                <button className="primary-button settings-save-button" onClick={onImportContacts}><ContactRound size={16} />{t.contactsImport}</button>
+                {app.contacts?.length > 0 && <div className="imported-contacts-note"><ContactRound size={15} />{app.contacts.length} contacts saved locally.</div>}
+                <div className="settings-note"><ShieldCheck size={16} />No contact permission is requested until you press Import contacts.</div>
+              </>}
+
+              {section === 'security' && <>
+                <div className="security-id-card"><span className="security-shield"><LockKeyhole size={19} /></span><div><strong>Guest identity</strong><small>{app.identity.id}</small></div><button className="small-copy-button" onClick={onCopy}><Copy size={16} /></button></div>
+                <div className="privacy-card"><ShieldCheck size={18} /><div><strong>Security note</strong><p>{t.securityHint}</p><small>Do not share sensitive information in this starter service.</small></div></div>
+                <div className="settings-note">This browser stores your guest key locally. Clearing site data creates a new identity.</div>
+              </>}
+
+              {section === 'support' && <>
+                <div className="settings-info-block support-info"><CircleHelp size={22} /><strong>{t.support}</strong><p>{t.supportHint}</p><small>For calls, use a secure HTTPS connection and allow browser microphone/camera permission when prompted.</small></div>
+                <button className="support-id-row" onClick={onCopy}><span><small>{t.yourId}</small><strong>{app.identity.id}</strong></span><Copy size={16} /></button>
+              </>}
+
+              {section === 'logout' && <>
+                <div className="logout-panel"><span className="logout-emblem"><LogOut size={22} /></span><h3>{t.logout}</h3><p>This app uses a guest identity instead of an account. Logging out erases this browser’s local profile, guest ID, chats, contacts and settings.</p><button className="danger-button" onClick={onLogout}><LogOut size={16} />{t.logout}</button></div>
+              </>}
+            </div>
+            <footer className="settings-panel-footer"><ShieldCheck size={14} />{t.localOnly}<button onClick={onClose}>{t.close}</button></footer>
           </div>
-          <label className="field-label">{t.displayName}</label>
-          <div className="name-edit-row"><input className="text-field" value={name} onChange={(event) => setName(event.target.value)} maxLength={40} /><button className="primary-button save-name-button" onClick={() => onSaveName(name)}>{t.save}</button></div>
-
-          <div className="settings-section-title"><span className="section-icon lavender-icon"><Sun size={16} /></span><div><strong>{t.appearance}</strong><small>{t.settingsHint}</small></div></div>
-          <div className="choice-row">
-            <button className={!isDark ? 'choice-button selected' : 'choice-button'} onClick={() => onSettings({ theme: 'light' })}><Sun size={16} />{t.light}</button>
-            <button className={isDark ? 'choice-button selected' : 'choice-button'} onClick={() => onSettings({ theme: 'dark' })}><Moon size={16} />{t.dark}</button>
-          </div>
-
-          <div className="settings-section-title"><span className="section-icon blue-icon"><Globe size={16} /></span><div><strong>{t.language}</strong><small>{t.settingsHint}</small></div></div>
-          <div className="choice-row">
-            <button className={app.settings.language === 'bn' ? 'choice-button selected' : 'choice-button'} onClick={() => onSettings({ language: 'bn' })}>{t.bengali}</button>
-            <button className={app.settings.language === 'en' ? 'choice-button selected' : 'choice-button'} onClick={() => onSettings({ language: 'en' })}>English</button>
-          </div>
-
-          <div className="settings-section-title"><span className="section-icon peach-icon"><Bell size={16} /></span><div><strong>{t.notifications}</strong><small>{t.settingsHint}</small></div></div>
-          <button className="setting-toggle-row" onClick={() => onSettings({ sound: !app.settings.sound })}><span className="setting-row-icon">{app.settings.sound ? <Volume2 size={17} /> : <VolumeX size={17} />}</span><span><strong>{t.sound}</strong><small>{app.settings.sound ? t.online : t.hide}</small></span><span className={`toggle-switch ${app.settings.sound ? 'toggle-on' : ''}`}><i /></span></button>
-          <button className="setting-toggle-row" onClick={() => app.settings.notifications ? onSettings({ notifications: false }) : enableNotifications()}><span className="setting-row-icon"><Bell size={17} /></span><span><strong>{t.enableNotifications}</strong><small>{app.settings.notifications ? t.online : t.offline}</small></span><span className={`toggle-switch ${app.settings.notifications ? 'toggle-on' : ''}`}><i /></span></button>
-
-          <div className="privacy-card"><ShieldCheck size={18} /><div><strong>{t.privacy}</strong><p>{t.privacyHint}</p><small>{t.saveOnDevice}</small></div></div>
         </div>
-        <footer className="settings-dialog-footer"><span><ShieldCheck size={14} />{t.localOnly}</span><div><button className="secondary-button" onClick={onShare}><Share2 size={15} />{t.shareInvite}</button><button className="primary-button" onClick={onClose}>{t.close}</button></div></footer>
       </section>
     </div>
   );
 }
 
-function CallOverlay({ call, t, onAccept, onDecline, onEnd, onMute, onVideo }) {
+function CallOverlay({
+  call, t, onAccept, onDecline, onEnd, onMute, onVideo, onSpeaker, onKeypad, onDigit,
+  onScreenShare, onSwitchCamera,
+}) {
   const remoteVideoRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
@@ -1547,8 +2067,9 @@ function CallOverlay({ call, t, onAccept, onDecline, onEnd, onMute, onVideo }) {
   useEffect(() => {
     if (remoteVideoRef.current && call.remoteStream) remoteVideoRef.current.srcObject = call.remoteStream;
     if (remoteAudioRef.current && call.remoteStream) remoteAudioRef.current.srcObject = call.remoteStream;
+    if (remoteAudioRef.current) remoteAudioRef.current.volume = call.speakerOn ? 1 : 0;
     if (localVideoRef.current && call.localStream) localVideoRef.current.srcObject = call.localStream;
-  }, [call.remoteStream, call.localStream, call.kind]);
+  }, [call.remoteStream, call.localStream, call.kind, call.speakerOn]);
   useEffect(() => {
     const start = call.startedAt || Date.now();
     const tick = () => setDuration(Math.floor((Date.now() - start) / 1000));
@@ -1556,15 +2077,18 @@ function CallOverlay({ call, t, onAccept, onDecline, onEnd, onMute, onVideo }) {
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [call.startedAt]);
+  const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
   return (
     <div className={`call-overlay ${call.kind === 'video' ? 'video-call-overlay' : ''}`}>
       <section className="call-window">
-        <header className="call-window-header"><span className="call-brand"><BrandMark small />You &amp; Me</span><span className={`call-live-pill ${call.status === 'active' ? 'live' : ''}`}><i />{statusText}</span></header>
-        <div className={`call-stage ${call.kind === 'video' ? 'video-stage' : ''}`}>
-          {call.kind === 'video' && call.remoteStream ? <video ref={remoteVideoRef} className="remote-video" autoPlay playsInline /> : <div className="call-portrait"><span className="call-pulse pulse-a" /><span className="call-pulse pulse-b" /><Avatar name={call.peerName} id={call.peerId} size="call" /><span className="call-spark">✦</span></div>}
+        <header className="call-window-header"><span className="call-brand"><BrandMark small />You and Me</span><span className={`call-live-pill ${call.status === 'active' ? 'live' : ''}`}><i />{statusText}</span></header>
+        <div className={`call-stage ${call.kind === 'video' ? 'video-stage' : ''} ${call.keypadOpen ? 'has-keypad' : ''}`}>
+          {call.kind === 'video' && call.remoteStream ? <video ref={remoteVideoRef} className="remote-video" autoPlay playsInline /> : <div className="call-portrait"><span className="call-pulse pulse-a" /><span className="call-pulse pulse-b" /><Avatar name={call.peerName} id={call.peerId} photo={call.peerAvatar} size="call" /><span className="call-spark">✦</span></div>}
           {call.kind === 'audio' && <audio ref={remoteAudioRef} autoPlay />}
           {call.kind === 'video' && call.localStream && <div className="local-video-tile"><video ref={localVideoRef} autoPlay playsInline muted />{call.videoOff && <span><VideoOff size={15} /></span>}</div>}
-          <div className="call-stage-person"><strong>{call.peerName}</strong><small>{call.kind === 'video' ? t.videoCall : t.voiceCall}</small></div>
+          {call.screenSharing && <div className="screen-sharing-indicator"><MonitorUp size={14} />{t.sharingNow}</div>}
+          <div className="call-stage-person"><strong>{call.peerName}</strong><small>{call.kind === 'video' ? t.videoCall : t.audioCall}</small></div>
+          {call.keypadOpen && call.kind === 'audio' && <div className="call-keypad">{digits.map((digit) => <button key={digit} onClick={() => onDigit(digit)}>{digit}</button>)}<button className="keypad-close" onClick={onKeypad}>Close</button></div>}
         </div>
         <footer className="call-controls">
           {isIncoming ? (
@@ -1574,12 +2098,34 @@ function CallOverlay({ call, t, onAccept, onDecline, onEnd, onMute, onVideo }) {
             </>
           ) : (
             <>
-              <button className={`call-control utility-control ${call.muted ? 'control-active' : ''}`} onClick={onMute}><span className="control-round">{call.muted ? <MicOff size={19} /> : <Mic size={19} />}</span><span>{call.muted ? t.unmute : t.mute}</span></button>
-              {call.kind === 'video' && <button className={`call-control utility-control ${call.videoOff ? 'control-active' : ''}`} onClick={onVideo}><span className="control-round">{call.videoOff ? <VideoOff size={19} /> : <Video size={19} />}</span><span>{call.videoOff ? t.cameraOn : t.cameraOff}</span></button>}
-              <button className="call-control decline-control" onClick={onEnd}><PhoneOff size={20} /><span>{t.endCall}</span></button>
+              <button className={`call-control utility-control ${call.muted ? 'control-active' : ''}`} onClick={onMute} title={call.muted ? t.unmute : t.mute}><span className="control-round">{call.muted ? <MicOff size={18} /> : <Mic size={18} />}</span><span>{call.muted ? t.unmute : t.mute}</span></button>
+              {call.kind === 'audio' && <>
+                <button className={`call-control utility-control ${call.keypadOpen ? 'control-active' : ''}`} onClick={onKeypad} title={t.keypad}><span className="control-round"><Hash size={18} /></span><span>{t.keypad}</span></button>
+                <button className={`call-control utility-control ${!call.speakerOn ? 'control-active' : ''}`} onClick={onSpeaker} title={t.speaker}><span className="control-round"><Speaker size={18} /></span><span>{call.speakerOn ? t.speaker : t.speakerOff}</span></button>
+              </>}
+              {call.kind === 'video' && <>
+                <button className={`call-control utility-control ${call.videoOff ? 'control-active' : ''}`} onClick={onVideo} title={call.videoOff ? t.cameraOn : t.cameraOff}><span className="control-round">{call.videoOff ? <VideoOff size={18} /> : <Video size={18} />}</span><span>{call.videoOff ? t.cameraOn : t.cameraOff}</span></button>
+                <button className={`call-control utility-control ${call.screenSharing ? 'control-active' : ''}`} onClick={onScreenShare} title={call.screenSharing ? t.stopScreenShare : t.screenShare}><span className="control-round">{call.screenSharing ? <MonitorX size={18} /> : <MonitorUp size={18} />}</span><span>{call.screenSharing ? t.stop : t.screenShare}</span></button>
+                <button className="call-control utility-control" onClick={onSwitchCamera} title={t.switchCamera}><span className="control-round"><Camera size={18} /></span><span>{t.switchCamera}</span></button>
+              </>}
+              <button className="call-control decline-control" onClick={onEnd} title={t.endCall}><PhoneOff size={20} /><span>{t.endCall}</span></button>
             </>
           )}
         </footer>
+      </section>
+    </div>
+  );
+}
+
+function ScreenSharePrompt({ t, onCancel, onAllow }) {
+  return (
+    <div className="share-screen-prompt" role="dialog" aria-modal="true" aria-labelledby="screen-share-title">
+      <section className="share-prompt-card">
+        <div className="share-prompt-icon"><MonitorUp size={23} /></div>
+        <span className="eyebrow">You and Me</span>
+        <h2 id="screen-share-title">{t.allowScreenShare}</h2>
+        <p>{t.screenShareHint}</p>
+        <div className="share-prompt-actions"><button className="secondary-button" onClick={onCancel}>{t.cancel}</button><button className="primary-button" onClick={onAllow}><MonitorUp size={15} />{t.allow}</button></div>
       </section>
     </div>
   );

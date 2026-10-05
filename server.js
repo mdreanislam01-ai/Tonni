@@ -16,7 +16,7 @@ const io = new SocketServer(httpServer, {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, app: 'You & Me', online: activeUsers.size });
+  res.json({ ok: true, app: 'You and Me', online: activeUsers.size });
 });
 
 // Guest identities live only in this process. The browser keeps its own ID and
@@ -31,10 +31,38 @@ const roomFor = (id) => `guest:${id}`;
 const normaliseId = (value) => String(value ?? '').trim().toUpperCase();
 const validId = (value) => /^YM-[A-Z0-9]{6}$/.test(value);
 const safeName = (value) => String(value ?? 'Guest').trim().replace(/[<>\u0000-\u001f]/g, '').slice(0, 40) || 'Guest';
+const safeUsername = (value) => String(value ?? '').trim().replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 24);
+const safePhone = (value) => {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  const national = digits.startsWith('00880') ? digits.slice(2) : digits;
+  const local = national.startsWith('880') ? `0${national.slice(3)}` : national;
+  return /^01[3-9]\d{8}$/.test(local) ? `+880${local.slice(1)}` : '';
+};
+const safeAvatar = (value) => {
+  const avatar = String(value ?? '');
+  return /^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(avatar) && avatar.length <= 180_000 ? avatar : '';
+};
+const updateGuestProfile = (guest, payload = {}) => {
+  guest.name = safeName(payload.name);
+  guest.username = safeUsername(payload.username);
+  guest.phone = safePhone(payload.phone);
+  guest.phonePublic = Boolean(payload.phonePublic && guest.phone);
+  guest.avatar = safeAvatar(payload.avatar);
+  guest.showPresence = payload.showPresence !== false;
+};
 const ackWith = (ack, body) => {
   if (typeof ack === 'function') ack(body);
 };
-const publicUsers = () => [...activeUsers.values()].map(({ id, name }) => ({ id, name }));
+const publicUsers = () => [...activeUsers.values()]
+  .filter((guest) => guest.showPresence)
+  .map(({ id, name, username, phone, phonePublic, avatar }) => ({
+    id,
+    name,
+    username,
+    phone: phonePublic ? phone : '',
+    avatar,
+    online: true,
+  }));
 const getPeer = (call, id) => (call?.a === id ? call.b : call?.b === id ? call.a : null);
 
 function emitPresence() {
@@ -68,11 +96,10 @@ io.on('connection', (socket) => {
       return;
     }
     if (!guest) {
-      guest = { id, name: safeName(payload.name), key, sockets: new Set() };
+      guest = { id, key, sockets: new Set() };
       activeUsers.set(id, guest);
-    } else {
-      guest.name = safeName(payload.name);
     }
+    updateGuestProfile(guest, payload);
 
     guest.sockets.add(socket.id);
     socketGuests.set(socket.id, id);
@@ -88,7 +115,7 @@ io.on('connection', (socket) => {
     const id = socketGuests.get(socket.id);
     const guest = id && activeUsers.get(id);
     if (!guest) return;
-    guest.name = safeName(payload.name);
+    updateGuestProfile(guest, { ...guest, ...payload });
     emitPresence();
   });
 
@@ -99,7 +126,8 @@ io.on('connection', (socket) => {
       return;
     }
     const guest = activeUsers.get(id);
-    ackWith(ack, { ok: true, online: Boolean(guest), name: guest?.name ?? null });
+    const visible = Boolean(guest?.showPresence);
+    ackWith(ack, { ok: true, online: visible, name: visible ? guest.name : null });
   });
 
   socket.on('message:send', (payload = {}, ack) => {
@@ -132,6 +160,9 @@ io.on('connection', (socket) => {
       fromId: senderId,
       toId,
       senderName: sender.name,
+      senderUsername: sender.username,
+      senderPhone: sender.phonePublic ? sender.phone : '',
+      senderAvatar: sender.avatar,
       text,
       type,
       attachment,
@@ -204,6 +235,7 @@ io.on('connection', (socket) => {
       callId,
       fromId,
       fromName: caller?.name ?? 'Guest',
+      fromAvatar: caller?.avatar ?? '',
       kind,
     });
     ackWith(ack, { ok: true });
@@ -284,7 +316,7 @@ if (isProduction) {
 
 const port = Number(process.env.PORT) || 4173;
 httpServer.listen(port, '0.0.0.0', () => {
-  console.log(`You & Me is ready on http://0.0.0.0:${port} (${isProduction ? 'production' : 'development'})`);
+  console.log(`You and Me is ready on http://0.0.0.0:${port} (${isProduction ? 'production' : 'development'})`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
