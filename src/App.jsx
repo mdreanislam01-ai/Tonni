@@ -356,7 +356,7 @@ function App() {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').then((reg) => {
         // Auto subscribe if permission is already granted
-        if (Notification.permission === 'granted' && socketRef.current?.connected) {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && latestAppRef.current.settings.notifications && latestAppRef.current.settings.backgroundAlerts !== false && socketRef.current?.connected && guestRegisteredRef.current) {
           subscribeToPush(socketRef.current);
         }
       }).catch((err) => {
@@ -376,7 +376,7 @@ function App() {
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
         });
       }
-      if (sub && socket?.connected) {
+      if (sub && socket?.connected && guestRegisteredRef.current && latestAppRef.current.settings.notifications && latestAppRef.current.settings.backgroundAlerts !== false) {
         socket.emit('push:subscribe', { subscription: sub.toJSON() });
       }
     } catch (err) {
@@ -385,13 +385,15 @@ function App() {
   }
 
   async function unsubscribeFromPush() {
+    if (socketRef.current?.connected && guestRegisteredRef.current) socketRef.current.emit('push:unsubscribe');
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) await sub.unsubscribe();
-      socketRef.current?.emit('push:unsubscribe');
-    } catch (err) {}
+    } catch {
+      // The server subscription is removed above even if the browser cannot unsubscribe locally.
+    }
   }
 
   const [toast, setToast] = useState('');
@@ -404,6 +406,7 @@ function App() {
   const [settingsSection, setSettingsSection] = useState('account');
 
   const socketRef = useRef(null);
+  const guestRegisteredRef = useRef(false);
   const latestAppRef = useRef(app);
   latestAppRef.current = app;
   const selectedChatRef = useRef(selectedChatId);
@@ -419,6 +422,17 @@ function App() {
   const incomingCallRef = useRef(null);
   const toastRef = useRef(null);
   const callTimeoutRef = useRef(null);
+  const notificationAudioRef = useRef(null);
+  const incomingNotificationRef = useRef(null);
+  const callNotificationIntentRef = useRef(null);
+  if (callNotificationIntentRef.current === null && typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const callId = String(params.get('callId') || '').slice(0, 100);
+    const requestedAction = params.get('callAction') || (params.get('autoAnswer') === 'true' ? 'answer' : 'open');
+    if (callId && ['open', 'answer', 'decline'].includes(requestedAction)) {
+      callNotificationIntentRef.current = { callId, action: requestedAction };
+    }
+  }
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const remoteIceRef = useRef([]);
@@ -484,6 +498,108 @@ function App() {
     setToast(message);
     if (toastRef.current) clearTimeout(toastRef.current);
     toastRef.current = setTimeout(() => setToast(''), 2600);
+  }
+
+  function playNotificationSound(kind = 'message') {
+    if (typeof window === 'undefined' || latestAppRef.current.settings.sound === false) return;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    try {
+      let context = notificationAudioRef.current;
+      if (!context || context.state === 'closed') {
+        context = new AudioContextClass();
+        notificationAudioRef.current = context;
+      }
+      if (context.state === 'suspended') context.resume().catch(() => {});
+
+      const tones = kind === 'call'
+        ? [{ frequency: 740, start: 0, duration: 0.16 }, { frequency: 880, start: 0.2, duration: 0.2 }, { frequency: 740, start: 0.45, duration: 0.16 }]
+        : [{ frequency: 660, start: 0, duration: 0.1 }, { frequency: 880, start: 0.12, duration: 0.14 }];
+      const now = context.currentTime;
+      tones.forEach(({ frequency, start, duration }) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const beginsAt = now + start;
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(frequency, beginsAt);
+        gain.gain.setValueAtTime(0.0001, beginsAt);
+        gain.gain.exponentialRampToValueAtTime(kind === 'call' ? 0.075 : 0.045, beginsAt + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, beginsAt + duration);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(beginsAt);
+        oscillator.stop(beginsAt + duration + 0.01);
+        oscillator.onended = () => {
+          oscillator.disconnect();
+          gain.disconnect();
+        };
+      });
+    } catch {
+      // Sound is optional; unsupported or locked audio must never block calls.
+    }
+  }
+
+  async function showIncomingCallNotification(call) {
+    const settings = latestAppRef.current.settings;
+    if (!call || !settings.notifications || settings.backgroundAlerts === false) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const hasWindowFocus = typeof document.hasFocus !== 'function' || document.hasFocus();
+    if (document.visibilityState === 'visible' && hasWindowFocus) return;
+
+    const tag = `call-${call.callId}`;
+    const title = call.kind === 'video' ? 'Incoming video call' : 'Incoming audio call';
+    const body = `${call.peerName || 'Someone'} is calling you on You and Me.`;
+    const data = {
+      type: 'call',
+      url: `/?to=${encodeURIComponent(call.peerId)}&callId=${encodeURIComponent(call.callId)}&callAction=open`,
+      callId: call.callId,
+      fromId: call.peerId,
+      kind: call.kind,
+    };
+    try {
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        const existing = await registration.getNotifications({ tag });
+        if (!existing.length) {
+          await registration.showNotification(title, {
+            body,
+            icon: call.peerAvatar || '/favicon.svg',
+            badge: '/favicon.svg',
+            tag,
+            renotify: false,
+            requireInteraction: true,
+            vibrate: [300, 150, 300, 150, 500],
+            data,
+            actions: [
+              { action: 'answer', title: 'Answer' },
+              { action: 'decline', title: 'Decline' },
+            ],
+          });
+        }
+      } else {
+        const notification = new Notification(title, {
+          body,
+          icon: call.peerAvatar || '/favicon.svg',
+          tag,
+          requireInteraction: true,
+        });
+        notification.onclick = () => window.focus();
+        incomingNotificationRef.current = notification;
+      }
+    } catch {
+      // The in-app call screen remains available if system notifications are blocked.
+    }
+  }
+
+  function closeIncomingCallNotification(callId) {
+    incomingNotificationRef.current?.close?.();
+    incomingNotificationRef.current = null;
+    if (!callId || !('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.ready
+      .then((registration) => registration.getNotifications({ tag: `call-${callId}` }))
+      .then((notifications) => notifications.forEach((notification) => notification.close()))
+      .catch(() => {});
   }
 
   function setCurrentCall(next) {
@@ -649,17 +765,31 @@ function App() {
   callSignalRef.current = handleCallSignal;
 
   function handleIncomingCall(payload) {
+    const callId = String(payload?.callId ?? '').slice(0, 100);
+    const fromId = parseGuestId(payload?.fromId);
+    if (!callId || !ID_PATTERN.test(fromId) || fromId === latestAppRef.current.identity.id) return;
+    if (callRef.current?.callId === callId) return;
     if (callRef.current) {
-      socketRef.current?.emit('call:respond', { callId: payload.callId, accepted: false, reason: 'busy' });
+      socketRef.current?.emit('call:respond', { callId, accepted: false, reason: 'busy' });
       return;
     }
+
+    const intent = callNotificationIntentRef.current?.callId === callId
+      ? callNotificationIntentRef.current
+      : null;
+    if (intent?.action === 'decline') {
+      callNotificationIntentRef.current = null;
+      socketRef.current?.emit('call:respond', { callId, accepted: false, reason: 'declined' });
+      return;
+    }
+
     pendingOfferRef.current = null;
     pendingAnswerRef.current = null;
     remoteIceRef.current = [];
     setCurrentCall({
-      callId: payload.callId,
-      peerId: payload.fromId,
-      peerName: payload.fromName || `${t.guest} ${payload.fromId.slice(-4)}`,
+      callId,
+      peerId: fromId,
+      peerName: String(payload.fromName || `${t.guest} ${fromId.slice(-4)}`).slice(0, 80),
       peerAvatar: payload.fromAvatar || '',
       kind: payload.kind === 'video' ? 'video' : 'audio',
       direction: 'incoming',
@@ -674,6 +804,15 @@ function App() {
       screenSharing: false,
       cameraFacing: 'user',
     });
+
+    if (intent?.action === 'answer') {
+      callNotificationIntentRef.current = null;
+      setTimeout(() => {
+        if (callRef.current?.callId === callId) acceptCall();
+      }, 0);
+    } else if (intent?.action === 'open') {
+      callNotificationIntentRef.current = null;
+    }
   }
   incomingCallRef.current = handleIncomingCall;
 
@@ -727,15 +866,64 @@ function App() {
   };
 
   useEffect(() => {
-    if (callState?.status === 'ringing' && callState?.direction === 'incoming') {
-      playNotificationSound('call');
-      const ringInterval = setInterval(() => {
-        playNotificationSound('call');
-      }, 2500);
-      return () => clearInterval(ringInterval);
-    }
-  }, [callState?.status, callState?.direction]);
+    if (callState?.status !== 'ringing' || callState?.direction !== 'incoming') return undefined;
+    const refreshCallAlert = () => {
+      const hasWindowFocus = typeof document.hasFocus !== 'function' || document.hasFocus();
+      if (document.visibilityState !== 'visible' || !hasWindowFocus) {
+        showIncomingCallNotification(callState);
+      } else {
+        closeIncomingCallNotification(callState.callId);
+      }
+    };
+    const ringInterval = setInterval(() => playNotificationSound('call'), 2500);
+    playNotificationSound('call');
+    refreshCallAlert();
+    document.addEventListener('visibilitychange', refreshCallAlert);
+    window.addEventListener('blur', refreshCallAlert);
+    window.addEventListener('focus', refreshCallAlert);
+    return () => {
+      clearInterval(ringInterval);
+      document.removeEventListener('visibilitychange', refreshCallAlert);
+      window.removeEventListener('blur', refreshCallAlert);
+      window.removeEventListener('focus', refreshCallAlert);
+    };
+  }, [callState?.callId, callState?.status, callState?.direction]);
 
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    const handleServiceWorkerMessage = (event) => {
+      const message = event.data;
+      if (message?.type !== 'call-notification-action' || !message.callId) return;
+      const action = ['answer', 'decline'].includes(message.action) ? message.action : 'open';
+      callNotificationIntentRef.current = { callId: message.callId, action };
+
+      if (callRef.current?.callId === message.callId) {
+        if (callRef.current.status === 'ringing' && action === 'answer') {
+          callNotificationIntentRef.current = null;
+          acceptCall();
+        } else if (callRef.current.status === 'ringing' && action === 'decline') {
+          callNotificationIntentRef.current = null;
+          declineCall();
+        } else {
+          callNotificationIntentRef.current = null;
+          window.focus();
+        }
+        return;
+      }
+
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('call:resume', { callId: message.callId }, (result) => {
+          (result?.pendingCalls ?? []).forEach((call) => incomingCallRef.current?.(call));
+          if (!result?.pendingCalls?.length && callNotificationIntentRef.current?.callId === message.callId) {
+            callNotificationIntentRef.current = null;
+          }
+        });
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+  }, []);
 
   useEffect(() => {
     const envSocketUrl = import.meta.env.VITE_SOCKET_URL;
@@ -751,9 +939,7 @@ function App() {
 
     socket.on('connect', () => {
       setConnectionStatus('connecting');
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        subscribeToPush(socket);
-      }
+      guestRegisteredRef.current = false;
       const latest = latestAppRef.current;
       socket.emit('guest:register', {
         id: app.identity.id,
@@ -767,9 +953,16 @@ function App() {
           if (result?.error === 'identity-in-use') showToast(t.noConnection);
           return;
         }
+        guestRegisteredRef.current = true;
         setConnectionStatus('connected');
         setOnlineUsers(result.online ?? []);
+        if (latestAppRef.current.settings.notifications && latestAppRef.current.settings.backgroundAlerts !== false && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          subscribeToPush(socket);
+        } else if (!latestAppRef.current.settings.notifications || latestAppRef.current.settings.backgroundAlerts === false) {
+          socket.emit('push:unsubscribe');
+        }
         (result.inbox ?? []).forEach((message) => receiveMessageRef.current?.(message));
+        (result.pendingCalls ?? []).forEach((call) => incomingCallRef.current?.(call));
 
         if (activeTabRef.current === 'chats') {
           const curChat = latestAppRef.current.chats.find((c) => c.id === selectedChatRef.current);
@@ -790,6 +983,7 @@ function App() {
       });
     });
     socket.on('disconnect', () => {
+      guestRegisteredRef.current = false;
       setConnectionStatus('offline');
       setOnlineUsers([]);
       setApp((current) => ({ ...current, chats: current.chats.map((chat) => chat.phone ? { ...chat, phone: '' } : chat) }));
@@ -849,7 +1043,8 @@ function App() {
         setCurrentCall((current) => current ? { ...current, status: 'connecting' } : current);
       } else {
         if (reason === 'busy') showToast(t.callBusy);
-        closeCall(reason === 'busy' ? 'missed' : 'declined', false);
+        else if (reason === 'timeout') showToast('No answer — call timed out');
+        closeCall(reason === 'busy' || reason === 'timeout' ? 'missed' : 'declined', false);
       }
     });
     socket.on('call:ended', ({ callId }) => {
@@ -860,6 +1055,7 @@ function App() {
     return () => {
       socket.removeAllListeners();
       socket.disconnect();
+      guestRegisteredRef.current = false;
       if (socketRef.current === socket) socketRef.current = null;
     };
     // One guest socket per browser profile. Name changes are sent by the effect below.
@@ -877,11 +1073,14 @@ function App() {
   }, [app.profile.name, app.profile.username, app.profile.phone, app.profile.phonePublic, app.profile.avatar, app.settings.showPresence]);
 
   useEffect(() => {
-    const inviteId = parseGuestId(new URLSearchParams(window.location.search).get('to'));
+    const params = new URLSearchParams(window.location.search);
+    const inviteId = parseGuestId(params.get('to'));
     if (!inviteHandledRef.current && inviteId && inviteId !== app.identity.id) {
       inviteHandledRef.current = true;
       openPeer(inviteId);
-      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (params.has('to') || params.has('callId') || params.has('callAction') || params.has('autoAnswer')) {
+      window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
     }
   }, [app.identity.id]);
 
@@ -930,10 +1129,20 @@ function App() {
     recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     peerConnectionRef.current?.close();
+    incomingNotificationRef.current?.close?.();
+    notificationAudioRef.current?.close?.().catch?.(() => {});
   }, []);
 
   function updateSettings(partial) {
     setApp((current) => ({ ...current, settings: { ...current.settings, ...partial } }));
+    if (Object.prototype.hasOwnProperty.call(partial, 'notifications') || Object.prototype.hasOwnProperty.call(partial, 'backgroundAlerts')) {
+      const nextSettings = { ...latestAppRef.current.settings, ...partial };
+      if (!nextSettings.notifications || nextSettings.backgroundAlerts === false) {
+        unsubscribeFromPush();
+      } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        subscribeToPush(socketRef.current);
+      }
+    }
   }
 
   function updateProfile(profile) {
@@ -1349,6 +1558,11 @@ function App() {
       showToast(t.callMediaError);
       return;
     }
+    if (callRef.current) {
+      showToast(t.callBusy);
+      return;
+    }
+
     const isTargetOnline = onlineUsers.some((user) => user.id === peerId);
     const callId = makeUuid();
     const peerName = target.name || `${t.guest} ${peerId.slice(-4)}`;
@@ -1379,48 +1593,59 @@ function App() {
 
     if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
     callTimeoutRef.current = setTimeout(() => {
-      if (callRef.current?.callId === callId && callRef.current?.status === 'ringing') {
+      const current = callRef.current;
+      if (current?.callId === callId && current.status !== 'active') {
         showToast('Call timed out — missed call alert sent');
         closeCall('missed', true);
       }
     }, 42000);
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
-      if (callRef.current?.callId !== callId) {
-        stream.getTracks().forEach((track) => track.stop());
+    // Tell the other person to ring before requesting local media. Browser permission
+    // prompts can take time; they must not prevent the incoming call screen appearing.
+    const socket = socketRef.current;
+    socket.timeout(8000).emit('call:start', { callId, toId: peerId, kind }, async (error, result) => {
+      if (callRef.current?.callId !== callId) return;
+      if (error || !result?.ok) {
+        if (result?.error === 'busy') showToast(t.callBusy);
+        else if (error) showToast(t.noConnection);
+        closeCall(result?.error === 'busy' ? 'missed' : 'failed', true);
         return;
       }
-      localStreamRef.current = stream;
-      cameraTrackRef.current = stream.getVideoTracks()[0] || null;
-      setCurrentCall((current) => current?.callId === callId ? { ...current, localStream: stream } : current);
-      const pc = makePeerConnection(callId, peerId, stream);
-      socketRef.current.emit('call:start', { callId, toId: peerId, kind }, async (result) => {
-        if (!result?.ok) {
-          showToast(result?.error === 'busy' ? t.callBusy : 'Could not place call');
-          closeCall(result?.error === 'busy' ? 'missed' : 'failed', false);
+      setCurrentCall((current) => current?.callId === callId ? { ...current, isOffline: Boolean(result.offline) } : current);
+      if (result.offline) showToast('Calling (Offline) — alert notification sent');
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
+        if (callRef.current?.callId !== callId) {
+          stream.getTracks().forEach((track) => track.stop());
           return;
         }
-        if (result.offline) {
-          showToast('Calling (Offline) — alert notification sent');
-        }
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socketRef.current?.emit('call:signal', { callId, toId: peerId, signal: { type: 'offer', sdp: pc.localDescription } });
-        } catch {
+        localStreamRef.current = stream;
+        cameraTrackRef.current = stream.getVideoTracks()[0] || null;
+        setCurrentCall((current) => current?.callId === callId ? { ...current, localStream: stream } : current);
+        const pc = makePeerConnection(callId, peerId, stream);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        if (callRef.current?.callId !== callId) return;
+        socket.emit('call:signal', {
+          callId,
+          toId: peerId,
+          signal: { type: 'offer', sdp: pc.localDescription },
+        });
+      } catch {
+        if (callRef.current?.callId === callId) {
           closeCall('failed', true);
+          showToast(t.callMediaError);
         }
-      });
-    } catch {
-      closeCall('failed', false);
-      showToast(t.callMediaError);
-    }
+      }
+    });
   }
 
   async function acceptCall() {
     const call = callRef.current;
-    if (!call || call.direction !== 'incoming') return;
+    if (!call || call.direction !== 'incoming' || call.status !== 'ringing') return;
+    closeIncomingCallNotification(call.callId);
+    setCurrentCall((current) => current?.callId === call.callId ? { ...current, status: 'connecting' } : current);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: call.kind === 'video' });
       if (callRef.current?.callId !== call.callId) {
@@ -1438,6 +1663,7 @@ function App() {
         await flushRemoteIce(peerConnectionRef.current);
       }
     } catch {
+      if (callRef.current?.callId !== call.callId) return;
       socketRef.current?.emit('call:respond', { callId: call.callId, accepted: false, reason: 'permission' });
       closeCall('declined', false);
       showToast(t.callMediaError);
@@ -1447,6 +1673,7 @@ function App() {
   function closeCall(reason = 'ended', notifyPeer = true) {
     const call = callRef.current;
     if (!call) return;
+    closeIncomingCallNotification(call.callId);
     if (callTimeoutRef.current) {
       clearTimeout(callTimeoutRef.current);
       callTimeoutRef.current = null;
@@ -1466,7 +1693,7 @@ function App() {
     remoteIceRef.current = [];
     offerInFlightRef.current = false;
     setCurrentCall(null);
-    const status = reason === 'declined' ? 'declined' : reason === 'missed' || reason === 'failed' || (reason === 'ended' && call.status === 'ringing') ? 'missed' : 'completed';
+    const status = reason === 'declined' ? 'declined' : reason === 'missed' || reason === 'failed' || (reason === 'ended' && call.status !== 'active') ? 'missed' : 'completed';
     const wasMissed = status === 'missed' || status === 'declined';
 
     setApp((current) => {
@@ -1857,7 +2084,7 @@ function App() {
       {modal === 'new-chat' && (
         <NewChatDialog t={t} identity={app.identity} onClose={() => setModal('')} onStart={(id, name) => { setModal(''); openPeer(id, name); }} onCopy={() => copyText(app.identity.id)} />
       )}
-      {showNotificationPrompt && (
+      {showNotificationPrompt && !callState && (
         <div className="notif-permission-card">
           <div className="notif-permission-icon"><Bell size={22} /></div>
           <div className="notif-permission-content">
@@ -1871,7 +2098,7 @@ function App() {
         </div>
       )}
 
-      {topNotification && (
+      {topNotification && !callState && (
         <div className="top-banner-notification" onClick={() => {
           openPeer(topNotification.senderId, topNotification.senderName);
           setTopNotification(null);
@@ -1890,7 +2117,7 @@ function App() {
         </div>
       )}
 
-      {floatingChatHeads.length > 0 && (
+      {floatingChatHeads.length > 0 && !callState && (
         <div className="messenger-chat-heads">
           {floatingChatHeads.map((head) => (
             <div key={head.senderId} className="messenger-head-item">
@@ -1955,7 +2182,10 @@ function App() {
             if (!('Notification' in window)) { showToast(t.enableNotifications); return; }
             const permission = await Notification.requestPermission();
             updateSettings({ notifications: permission === 'granted' });
-            if (permission === 'granted') showToast(t.copied);
+            if (permission === 'granted') {
+              await subscribeToPush(socketRef.current);
+              showToast(t.copied);
+            }
           }}
         />
       )}
@@ -2834,7 +3064,7 @@ function CallOverlay({
   }, [call.startedAt]);
   const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
   return (
-    <div className={`call-overlay ${call.kind === 'video' ? 'video-call-overlay' : ''}`}>
+    <div className={`call-overlay ${call.kind === 'video' ? 'video-call-overlay' : ''}`} role="dialog" aria-modal="true" aria-label={`${call.direction === 'incoming' ? t.incomingCall : t.outgoingCall}: ${call.peerName}`}>
       <section className="call-window">
         <header className="call-window-header"><span className="call-brand"><BrandMark small />You and Me</span><span className={`call-live-pill ${call.status === 'active' ? 'live' : ''}`}><i />{statusText}</span></header>
         <div className={`call-stage ${call.kind === 'video' ? 'video-stage' : ''} ${call.keypadOpen ? 'has-keypad' : ''}`}>

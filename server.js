@@ -113,6 +113,7 @@ const socketGuests = new Map(); // socket ID -> guest ID
 const inboxes = new Map(); // guest ID -> messages waiting for the guest to reconnect
 const calls = new Map(); // call ID -> { a, b }
 const userCalls = new Map(); // guest ID -> call ID
+const CALL_RING_TIMEOUT_MS = 45_000;
 
 const roomFor = (id) => `guest:${id}`;
 const normaliseId = (value) => String(value ?? '').trim().toUpperCase();
@@ -178,9 +179,54 @@ function emitPresence() {
   io.emit('presence:update', publicUsers());
 }
 
+function pendingCallsFor(id, callIdFilter = '') {
+  return [...calls.entries()]
+    .filter(([callId, call]) => call.b === id && !call.acceptedAt && (!callIdFilter || callId === callIdFilter))
+    .map(([callId, call]) => ({
+      callId,
+      fromId: call.a,
+      fromName: call.callerName || 'User',
+      fromAvatar: call.callerAvatar || '',
+      kind: call.kind || 'audio',
+    }));
+}
+
+function notifyMissedCall(callId, call) {
+  if (!call || call.acceptedAt) return;
+  sendPushNotification(call.b, { type: 'call-ended', callId });
+  sendPushNotification(call.b, {
+    type: 'call-missed',
+    callId,
+    fromId: call.a,
+    fromName: call.callerName || 'User',
+    kind: call.kind || 'audio',
+  });
+}
+
+function queueMissedCall(callId, call) {
+  if (!call || call.acceptedAt) return;
+  const missedNotice = {
+    id: `call-missed-${callId}`,
+    fromId: call.a,
+    toId: call.b,
+    senderName: call.callerName || 'User',
+    senderUsername: call.callerUsername || '',
+    senderAvatar: call.callerAvatar || '',
+    type: 'call_missed',
+    kind: call.kind || 'audio',
+    callId,
+    text: `Missed ${call.kind === 'video' ? 'video' : 'audio'} call`,
+    createdAt: Date.now(),
+  };
+  const queue = inboxes.get(call.b) ?? [];
+  if (!queue.some((item) => item.id === missedNotice.id)) queue.push(missedNotice);
+  inboxes.set(call.b, queue.slice(-200));
+}
+
 function removeCall(callId, endedBy = null) {
   const call = calls.get(callId);
   if (!call) return;
+  if (call.timeout) clearTimeout(call.timeout);
   calls.delete(callId);
   userCalls.delete(call.a);
   userCalls.delete(call.b);
@@ -229,7 +275,7 @@ io.on('connection', (socket) => {
 
     const pending = inboxes.get(id) ?? [];
     inboxes.delete(id);
-    ackWith(ack, { ok: true, online: publicUsers(), inbox: pending });
+    ackWith(ack, { ok: true, online: publicUsers(), inbox: pending, pendingCalls: pendingCallsFor(id) });
     emitPresence();
   });
 
@@ -427,60 +473,68 @@ io.on('connection', (socket) => {
       return;
     }
 
-    calls.set(callId, {
+    const call = {
       a: fromId,
       b: toId,
       kind,
       callerName: caller?.name ?? 'User',
+      callerUsername: caller?.username ?? '',
       callerAvatar: caller?.avatar ?? '',
       startedAt: Date.now(),
-    });
+      acceptedAt: 0,
+      timeout: null,
+    };
+    calls.set(callId, call);
     userCalls.set(fromId, callId);
     userCalls.set(toId, callId);
 
-    // Send background Web Push Notification to wake up recipient's phone/browser
+    // Push is the wake-up path when a mobile browser suspends its open tab. The
+    // service worker suppresses it when the app is already focused.
     sendPushNotification(toId, {
       type: 'call',
       callId,
       fromId,
-      fromName: caller?.name ?? 'User',
-      fromAvatar: caller?.avatar ?? '',
+      fromName: call.callerName,
+      fromAvatar: call.callerAvatar,
       kind,
     });
 
     const target = activeUsers.get(toId);
-    if (!target) {
-      // Recipient is OFFLINE: Queue a missed call record into their inbox
-      const missedNotice = {
-        id: `call-missed-${callId}`,
-        fromId,
-        toId,
-        senderName: caller?.name ?? 'User',
-        senderUsername: caller?.username ?? '',
-        senderAvatar: caller?.avatar ?? '',
-        type: 'call_missed',
-        kind,
-        callId,
-        text: `Missed ${kind === 'video' ? 'video' : 'audio'} call`,
-        createdAt: Date.now(),
-      };
-      const queue = inboxes.get(toId) ?? [];
-      if (!queue.some((item) => item.id === missedNotice.id)) queue.push(missedNotice);
-      inboxes.set(toId, queue.slice(-200));
-
+    if (!target?.sockets?.size) {
+      // Only record a missed call if nobody answers before timeout.
       ackWith(ack, { ok: true, offline: true });
-      return;
+    } else {
+      io.to(roomFor(toId)).emit('call:incoming', {
+        callId,
+        fromId,
+        fromName: call.callerName,
+        fromAvatar: call.callerAvatar,
+        kind,
+      });
+      ackWith(ack, { ok: true, online: true });
     }
 
-    // Recipient is ONLINE: Send live incoming call event
-    io.to(roomFor(toId)).emit('call:incoming', {
-      callId,
-      fromId,
-      fromName: caller?.name ?? 'User',
-      fromAvatar: caller?.avatar ?? '',
-      kind,
-    });
-    ackWith(ack, { ok: true, online: true });
+    call.timeout = setTimeout(() => {
+      if (calls.get(callId) !== call || call.acceptedAt) return;
+      const currentTarget = activeUsers.get(toId);
+      if (!currentTarget?.sockets?.size) {
+        queueMissedCall(callId, call);
+        notifyMissedCall(callId, call);
+      }
+      io.to(roomFor(fromId)).emit('call:response', { callId, fromId: toId, accepted: false, reason: 'timeout' });
+      io.to(roomFor(toId)).emit('call:ended', { callId, byId: fromId, reason: 'timeout' });
+      removeCall(callId);
+    }, CALL_RING_TIMEOUT_MS);
+  });
+
+  socket.on('call:resume', (payload = {}, ack) => {
+    const id = socketGuests.get(socket.id);
+    if (!id) {
+      ackWith(ack, { ok: false, pendingCalls: [] });
+      return;
+    }
+    const callId = String(payload.callId ?? '').slice(0, 100);
+    ackWith(ack, { ok: true, pendingCalls: pendingCallsFor(id, callId) });
   });
 
   socket.on('call:respond', (payload = {}) => {
@@ -490,13 +544,23 @@ io.on('connection', (socket) => {
     const toId = getPeer(call, fromId);
     if (!fromId || !toId) return;
     const accepted = Boolean(payload.accepted);
+    if (accepted) {
+      call.acceptedAt = Date.now();
+      if (call.timeout) {
+        clearTimeout(call.timeout);
+        call.timeout = null;
+      }
+    }
     io.to(roomFor(toId)).emit('call:response', {
       callId,
       fromId,
       accepted,
       reason: String(payload.reason ?? '').slice(0, 32),
     });
-    if (!accepted) removeCall(callId);
+    if (!accepted) {
+      sendPushNotification(call.b, { type: 'call-ended', callId });
+      removeCall(callId);
+    }
   });
 
   socket.on('call:signal', (payload = {}) => {
@@ -518,24 +582,11 @@ io.on('connection', (socket) => {
     const call = calls.get(callId);
     if (!fromId || !call) return;
     const recipientId = getPeer(call, fromId);
-    if (recipientId) {
+    if (recipientId && !call.acceptedAt) {
       const recipientTarget = activeUsers.get(recipientId);
-      if (!recipientTarget || !recipientTarget.sockets.size) {
-        const missedNotice = {
-          id: `call-missed-${callId}`,
-          fromId,
-          toId: recipientId,
-          senderName: call.callerName || 'User',
-          senderAvatar: call.callerAvatar || '',
-          type: 'call_missed',
-          kind: call.kind || 'audio',
-          callId,
-          text: `Missed ${call.kind === 'video' ? 'video' : 'audio'} call`,
-          createdAt: Date.now(),
-        };
-        const queue = inboxes.get(recipientId) ?? [];
-        if (!queue.some((item) => item.id === missedNotice.id)) queue.push(missedNotice);
-        inboxes.set(recipientId, queue.slice(-200));
+      if (!recipientTarget?.sockets?.size) {
+        queueMissedCall(callId, call);
+        notifyMissedCall(callId, call);
       }
     }
     removeCall(callId, fromId);
@@ -552,7 +603,17 @@ io.on('connection', (socket) => {
       if (guest.sockets.size === 0) {
         activeUsers.delete(id);
         const callId = userCalls.get(id);
-        if (callId) removeCall(callId, id);
+        if (callId) {
+          const call = calls.get(callId);
+          if (call && !call.acceptedAt) {
+            const callee = activeUsers.get(call.b);
+            if (!callee?.sockets?.size) {
+              queueMissedCall(callId, call);
+              notifyMissedCall(callId, call);
+            }
+          }
+          removeCall(callId, id);
+        }
         emitPresence();
       }
     }

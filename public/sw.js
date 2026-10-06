@@ -1,6 +1,6 @@
-// You and Me — Background Service Worker for Calls & Messages
+// You and Me — background notifications and call actions.
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
@@ -10,74 +10,136 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('push', (event) => {
   if (!event.data) return;
 
+  let payload;
   try {
-    const payload = event.data.json();
-    const type = payload.type || 'message';
-
-    if (type === 'call') {
-      const title = `📞 Incoming ${payload.kind === 'video' ? 'Video' : 'Audio'} Call`;
-      const options = {
-        body: `${payload.fromName || 'Someone'} is calling you on You and Me…`,
-        icon: payload.fromAvatar || '/favicon.svg',
-        badge: '/favicon.svg',
-        tag: `call-${payload.callId || Date.now()}`,
-        requireInteraction: true,
-        vibrate: [300, 150, 300, 150, 300, 150, 600],
-        data: {
-          url: `/?to=${payload.fromId}&callId=${payload.callId}&kind=${payload.kind}&autoAnswer=true`,
-          callId: payload.callId,
-          fromId: payload.fromId,
-        },
-        actions: [
-          { action: 'answer', title: '📞 Answer (ধরুন)' },
-          { action: 'decline', title: '❌ Decline (কেটে দিন)' },
-        ],
-      };
-      event.waitUntil(self.registration.showNotification(title, options));
-    } else {
-      const title = payload.fromName || 'You and Me';
-      const options = {
-        body: payload.text || 'New message received',
-        icon: payload.fromAvatar || '/favicon.svg',
-        badge: '/favicon.svg',
-        tag: `msg-${payload.fromId || Date.now()}`,
-        vibrate: [150, 80, 150],
-        data: {
-          url: `/?to=${payload.fromId}`,
-          fromId: payload.fromId,
-        },
-        actions: [
-          { action: 'open', title: '💬 Open Chat (খুলুন)' },
-        ],
-      };
-      event.waitUntil(self.registration.showNotification(title, options));
-    }
-  } catch (err) {
-    console.error('Service worker push error:', err);
-  }
-});
-
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-
-  const action = event.action;
-  if (action === 'decline') {
+    payload = event.data.json();
+  } catch (error) {
+    console.error('Invalid push payload:', error);
     return;
   }
 
-  const targetUrl = event.notification.data?.url || '/';
+  if (payload.type === 'call-ended') {
+    event.waitUntil(
+      self.registration.getNotifications({ tag: `call-${payload.callId}` }).then((notifications) => {
+        notifications.forEach((notification) => notification.close());
+      }),
+    );
+    return;
+  }
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (const client of windowClients) {
-        if ('focus' in client) {
-          client.navigate(targetUrl);
-          return client.focus();
-        }
+  if (payload.type === 'call') {
+    const callerId = encodeURIComponent(payload.fromId || '');
+    const callId = encodeURIComponent(payload.callId || '');
+    const kind = payload.kind === 'video' ? 'video' : 'audio';
+    const title = kind === 'video' ? '📹 Incoming video call' : '📞 Incoming audio call';
+    const options = {
+      body: `${payload.fromName || 'Someone'} is calling you on You and Me.`,
+      icon: payload.fromAvatar || '/favicon.svg',
+      badge: '/favicon.svg',
+      tag: `call-${payload.callId || Date.now()}`,
+      renotify: false,
+      requireInteraction: true,
+      vibrate: [300, 150, 300, 150, 300, 150, 600],
+      data: {
+        type: 'call',
+        url: `/?to=${callerId}&callId=${callId}&kind=${kind}&callAction=open`,
+        callId: payload.callId,
+        fromId: payload.fromId,
+        kind,
+      },
+      actions: [
+        { action: 'answer', title: '📞 Answer (ধরুন)' },
+        { action: 'decline', title: '❌ Decline (কেটে দিন)' },
+      ],
+    };
+    event.waitUntil((async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const appIsFocused = windows.some((client) => client.visibilityState === 'visible' && client.focused);
+      if (appIsFocused) return;
+      const existing = await self.registration.getNotifications({ tag: options.tag });
+      if (!existing.length) await self.registration.showNotification(title, options);
+    })());
+    return;
+  }
+
+  if (payload.type === 'call-missed') {
+    const callerId = encodeURIComponent(payload.fromId || '');
+    const kindLabel = payload.kind === 'video' ? 'video' : 'audio';
+    event.waitUntil(self.registration.showNotification(
+      `Missed ${kindLabel} call`,
+      {
+        body: `${payload.fromName || 'Someone'} called you on You and Me.`,
+        icon: '/favicon.svg',
+        badge: '/favicon.svg',
+        tag: `missed-call-${payload.callId || Date.now()}`,
+        data: {
+          type: 'missed-call',
+          url: `/?to=${callerId}`,
+          fromId: payload.fromId,
+        },
+      },
+    ));
+    return;
+  }
+
+  const fromId = encodeURIComponent(payload.fromId || '');
+  const options = {
+    body: payload.text || 'New message received',
+    icon: payload.fromAvatar || '/favicon.svg',
+    badge: '/favicon.svg',
+    tag: `msg-${payload.fromId || Date.now()}`,
+    renotify: false,
+    vibrate: [150, 80, 150],
+    data: {
+      url: `/?to=${fromId}`,
+      fromId: payload.fromId,
+    },
+    actions: [
+      { action: 'open', title: '💬 Open Chat (খুলুন)' },
+    ],
+  };
+  event.waitUntil(self.registration.showNotification(payload.fromName || 'You and Me', options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  const notification = event.notification;
+  notification.close();
+  const data = notification.data || {};
+  const isCall = data.type === 'call';
+  const action = ['answer', 'decline'].includes(event.action) ? event.action : 'open';
+
+  event.waitUntil((async () => {
+    const targetUrl = new URL(data.url || '/', self.location.origin);
+    if (isCall) {
+      targetUrl.searchParams.set('callId', data.callId);
+      targetUrl.searchParams.set('callAction', action);
+      if (data.fromId) targetUrl.searchParams.set('to', data.fromId);
+    }
+
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = clients.find((item) => {
+      try {
+        return new URL(item.url).origin === self.location.origin;
+      } catch {
+        return false;
       }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+    });
+
+    if (client) {
+      await client.focus();
+      if (isCall) {
+        client.postMessage({
+          type: 'call-notification-action',
+          action,
+          callId: data.callId,
+          fromId: data.fromId,
+        });
+      } else if ('navigate' in client) {
+        await client.navigate(targetUrl.href);
       }
-    })
-  );
+      return;
+    }
+
+    return self.clients.openWindow(targetUrl.href);
+  })());
 });
