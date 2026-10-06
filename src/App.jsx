@@ -3359,7 +3359,7 @@ function CallMoreOptions({ t, screenSharing, screenRecording, onScreenShare, onR
     <div className="call-more-options" ref={containerRef}>
       <button
         type="button"
-        className="call-control utility-control call-more-trigger"
+        className="call-more-trigger"
         id={`${menuId}-trigger`}
         ref={triggerRef}
         title={t.moreOptions}
@@ -3375,8 +3375,7 @@ function CallMoreOptions({ t, screenSharing, screenRecording, onScreenShare, onR
           }
         }}
       >
-        <span className="control-round"><MoreVertical size={18} /></span>
-        <span>{t.more}</span>
+        <MoreVertical size={18} />
       </button>
       {open && (
         <div className="call-more-menu" id={menuId} ref={menuRef} role="menu" aria-labelledby={`${menuId}-trigger`} onKeyDown={handleMenuKeyDown}>
@@ -3432,6 +3431,7 @@ export function CallOverlay({
     return () => clearInterval(timer);
   }, [call.startedAt]);
   const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+  const showMoreMenu = call.kind === 'video' && !isIncoming;
   const recordButton = (
     <button
       className={`call-control utility-control record-control ${screenRecording ? 'record-control-active' : ''}`}
@@ -3446,7 +3446,21 @@ export function CallOverlay({
   return (
     <div className={`call-overlay ${call.kind === 'video' ? 'video-call-overlay' : ''}`} role="dialog" aria-modal="true" aria-label={`${call.direction === 'incoming' ? t.incomingCall : t.outgoingCall}: ${call.peerName}`}>
       <section className="call-window">
-        <header className="call-window-header"><span className="call-brand"><BrandMark small />You and Me</span><span className={`call-live-pill ${call.status === 'active' ? 'live' : ''}`}><i />{statusText}</span></header>
+        <header className="call-window-header">
+          <div className="call-header-left">
+            {showMoreMenu && (
+              <CallMoreOptions
+                t={t}
+                screenSharing={call.screenSharing}
+                screenRecording={screenRecording}
+                onScreenShare={onScreenShare}
+                onRecordScreen={onRecordScreen}
+              />
+            )}
+            <span className="call-brand"><BrandMark small />You and Me</span>
+          </div>
+          <span className={`call-live-pill ${call.status === 'active' ? 'live' : ''}`}><i />{statusText}</span>
+        </header>
         <div className={`call-stage ${call.kind === 'video' ? 'video-stage' : ''} ${call.keypadOpen ? 'has-keypad' : ''}`}>
           {call.kind === 'video' && call.remoteStream ? <video ref={remoteVideoRef} className="remote-video" autoPlay playsInline /> : <div className="call-portrait"><span className="call-pulse pulse-a" /><span className="call-pulse pulse-b" /><Avatar name={call.peerName} id={call.peerId} photo={call.peerAvatar} size="call" /><span className="call-spark">✦</span></div>}
           {call.kind === 'audio' && <audio ref={remoteAudioRef} autoPlay />}
@@ -3479,13 +3493,6 @@ export function CallOverlay({
               </>}
               {call.kind === 'video' && <>
                 <button className={`call-control utility-control ${call.videoOff ? 'control-active' : ''}`} onClick={onVideo} title={call.videoOff ? t.cameraOn : t.cameraOff}><span className="control-round">{call.videoOff ? <VideoOff size={18} /> : <Video size={18} />}</span><span>{call.videoOff ? t.cameraOn : t.cameraOff}</span></button>
-                <CallMoreOptions
-                  t={t}
-                  screenSharing={call.screenSharing}
-                  screenRecording={screenRecording}
-                  onScreenShare={onScreenShare}
-                  onRecordScreen={onRecordScreen}
-                />
                 <button className="call-control utility-control" onClick={onSwitchCamera} title={t.switchCamera}><span className="control-round"><Camera size={18} /></span><span>{t.switchCamera}</span></button>
               </>}
               <button className="call-control decline-control" onClick={onEnd} title={t.endCall}><PhoneOff size={20} /><span>{t.endCall}</span></button>
