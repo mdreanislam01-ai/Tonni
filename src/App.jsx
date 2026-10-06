@@ -441,8 +441,8 @@ function App() {
   const typingPeerTimersRef = useRef({});
   const inviteHandledRef = useRef(false);
 
-  const language = 'en';
-  const t = words.en;
+  const language = app.settings?.language || 'en';
+  const t = words[language] || words.en;
   const selectedChat = app.chats.find((chat) => chat.id === selectedChatId) ?? app.chats.find((chat) => chat.id === 'saved') ?? null;
   const selectedIsOnline = Boolean(selectedChat?.peerId && onlineUsers.some((user) => user.id === selectedChat.peerId));
   const otherOnlineUsers = onlineUsers.filter((user) => user.id !== app.identity.id);
@@ -520,7 +520,9 @@ function App() {
       }));
       return;
     }
-    const isActive = activeTabRef.current === 'chats' && selectedChatRef.current === message.fromId && document.visibilityState === 'visible';
+    const curChat = latestAppRef.current.chats.find((c) => c.id === selectedChatRef.current);
+    const isViewingThisPeer = (selectedChatRef.current === message.fromId || curChat?.peerId === message.fromId);
+    const isActive = activeTabRef.current === 'chats' && isViewingThisPeer && document.visibilityState === 'visible';
     setApp((current) => {
       const existingChat = current.chats.find((chat) => chat.peerId === message.fromId);
       const newChat = existingChat ?? {
@@ -769,6 +771,14 @@ function App() {
         setOnlineUsers(result.online ?? []);
         (result.inbox ?? []).forEach((message) => receiveMessageRef.current?.(message));
 
+        if (activeTabRef.current === 'chats') {
+          const curChat = latestAppRef.current.chats.find((c) => c.id === selectedChatRef.current);
+          const peerId = curChat?.peerId || (selectedChatRef.current !== 'saved' ? selectedChatRef.current : null);
+          if (peerId) {
+            socket.emit('chat:read', { peerId });
+          }
+        }
+
         latestAppRef.current.chats.forEach((chat) => {
           if (chat.kind === 'saved') return;
           chat.messages.filter((message) => message.fromId === app.identity.id && message.status === 'pending').forEach((message) => {
@@ -876,11 +886,35 @@ function App() {
   }, [app.identity.id]);
 
   useEffect(() => {
-    if (activeTab !== 'chats') return;
-    if (selectedChat?.peerId) {
+    function markAsRead() {
+      if (document.visibilityState !== 'visible' || activeTabRef.current !== 'chats') return;
+      const curApp = latestAppRef.current;
+      const curChat = curApp.chats.find((c) => c.id === selectedChatRef.current);
+      const peerId = curChat?.peerId || (selectedChatRef.current !== 'saved' ? selectedChatRef.current : null);
+      if (peerId && socketRef.current?.connected) {
+        socketRef.current.emit('chat:read', { peerId });
+        setApp((current) => ({
+          ...current,
+          chats: current.chats.map((chat) => (chat.id === selectedChatRef.current || chat.peerId === peerId) ? {
+            ...chat,
+            unread: 0,
+            messages: chat.messages.map((m) => m.fromId !== current.identity.id && m.status !== 'read' ? { ...m, status: 'read' } : m),
+          } : chat),
+        }));
+      }
+    }
+
+    if (activeTab === 'chats' && selectedChat?.peerId) {
       setApp((current) => ({ ...current, chats: current.chats.map((chat) => chat.id === selectedChat.id ? { ...chat, unread: 0 } : chat) }));
       socketRef.current?.emit('chat:read', { peerId: selectedChat.peerId });
     }
+
+    document.addEventListener('visibilitychange', markAsRead);
+    window.addEventListener('focus', markAsRead);
+    return () => {
+      document.removeEventListener('visibilitychange', markAsRead);
+      window.removeEventListener('focus', markAsRead);
+    };
   }, [selectedChatId, activeTab]);
 
   useEffect(() => {
@@ -1449,11 +1483,32 @@ function App() {
           callId: call.callId,
           text: `Missed ${call.kind === 'video' ? 'video' : 'audio'} call`,
           createdAt: Date.now(),
-          status: 'read',
+          status: call.direction === 'outgoing' ? (call.isOffline ? 'sent' : 'delivered') : 'read',
         };
         const existingChat = current.chats.find((c) => c.peerId === call.peerId);
-        if (existingChat && !existingChat.messages.some((m) => m.id === missedMsg.id)) {
-          nextChats = current.chats.map((c) => c.id === existingChat.id ? { ...c, messages: [...c.messages, missedMsg].slice(-180), updatedAt: Date.now() } : c);
+        if (existingChat) {
+          if (!existingChat.messages.some((m) => m.id === missedMsg.id)) {
+            nextChats = current.chats.map((c) => c.id === existingChat.id ? {
+              ...c,
+              messages: [...c.messages, missedMsg].slice(-180),
+              updatedAt: Date.now(),
+            } : c);
+          }
+        } else {
+          const createdChat = {
+            id: call.peerId,
+            peerId: call.peerId,
+            name: call.peerName || `${t.guest} ${call.peerId.slice(-4)}`,
+            username: '',
+            phone: '',
+            avatar: call.peerAvatar || '',
+            kind: 'direct',
+            messages: [missedMsg],
+            unread: 0,
+            pinned: false,
+            updatedAt: Date.now(),
+          };
+          nextChats = [createdChat, ...current.chats];
         }
       }
 
@@ -2437,7 +2492,7 @@ function MessageBubble({ message, own, t, language, onCallPeer }) {
             </div>
             <div className="missed-call-details">
               <strong>{language === 'bn' ? (message.kind === 'video' ? 'মিসড ভিডিও কল' : 'মিসড অডিও কল') : (message.kind === 'video' ? 'Missed Video Call' : 'Missed Audio Call')}</strong>
-              <small>
+              <small className={`missed-call-sub ${message.status === 'read' ? 'status-read-text' : ''}`}>
                 {own ? (
                   message.status === 'read' ? (
                     language === 'bn' ? 'আউটগোয়িং · অপরজন দেখেছে ✓✓' : 'Outgoing · Seen by recipient ✓✓'

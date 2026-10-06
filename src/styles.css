@@ -1728,3 +1728,13 @@ button { -webkit-tap-highlight-color: transparent; }
   color: #ef4444 !important;
   font-weight: 600;
 }
+
+.missed-call-sub.status-read-text {
+  color: #0284c7 !important;
+  font-weight: 600;
+}
+
+.theme-dark .missed-call-sub.status-read-text {
+  color: #38bdf8 !important;
+  font-weight: 600;
+}
