@@ -1575,3 +1575,110 @@ button { -webkit-tap-highlight-color: transparent; }
     max-width: 170px;
   }
 }
+
+/* ==========================================================================
+   Missed Call Message Bubble & Call Back Button
+   ========================================================================== */
+
+.message-bubble.message-bubble-call {
+  background: var(--surface, #ffffff);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);
+  padding: 10px 14px 8px 14px;
+  min-width: 250px;
+  max-width: 320px;
+}
+
+.theme-dark .message-bubble.message-bubble-call {
+  background: #1f2937;
+  border-color: rgba(239, 68, 68, 0.38);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.missed-call-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.missed-call-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40px;
+}
+
+.theme-dark .missed-call-icon-wrap {
+  background: rgba(239, 68, 68, 0.22);
+  color: #f87171;
+}
+
+.missed-call-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.missed-call-details strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #dc2626;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.theme-dark .missed-call-details strong {
+  color: #f87171;
+}
+
+.missed-call-details small {
+  font-size: 11.5px;
+  color: var(--muted, #6b7280);
+  margin-top: 2px;
+}
+
+.missed-call-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+.missed-call-back-btn:hover {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4);
+}
+
+.missed-call-back-btn:active {
+  transform: translateY(0);
+}
+
+.call-result-missed {
+  color: #ef4444 !important;
+  font-weight: 600;
+}
+
+.call-missed-text {
+  color: #ef4444 !important;
+  font-weight: 600;
+}

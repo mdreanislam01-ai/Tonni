@@ -417,6 +417,7 @@ function App() {
   const callSignalRef = useRef(null);
   const incomingCallRef = useRef(null);
   const toastRef = useRef(null);
+  const callTimeoutRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const remoteIceRef = useRef([]);
@@ -534,13 +535,30 @@ function App() {
       const chats = existingChat
         ? current.chats.map((chat) => chat.id === existingChat.id ? updated : chat)
         : [updated, ...current.chats];
-      return { ...current, chats };
+
+      let nextCalls = current.calls;
+      if (message.type === 'call_missed') {
+        const callLog = {
+          id: message.callId || message.id,
+          peerId: message.fromId,
+          peerName: message.senderName || `${t.guest} ${message.fromId.slice(-4)}`,
+          direction: 'incoming',
+          kind: message.kind || 'audio',
+          status: 'missed',
+          at: Number(message.createdAt) || Date.now(),
+        };
+        nextCalls = [callLog, ...current.calls.filter((c) => c.id !== callLog.id)].slice(0, 60);
+      }
+
+      return { ...current, chats, calls: nextCalls };
     });
 
     socketRef.current?.emit('message:delivered', { id: message.id, fromId: message.fromId });
-    if (isActive) socketRef.current?.emit('chat:read', { peerId: message.fromId });
+    if (isActive && message.type !== 'call_missed') socketRef.current?.emit('chat:read', { peerId: message.fromId });
     else {
-      const snippet = message.text || (message.type === 'audio' ? '🎤 Voice message' : message.type === 'image' ? '📷 Photo' : '📎 Attachment');
+      const snippet = message.type === 'call_missed'
+        ? `📞 Missed ${message.kind === 'video' ? 'video' : 'audio'} call`
+        : message.text || (message.type === 'audio' ? '🎤 Voice message' : message.type === 'image' ? '📷 Photo' : '📎 Attachment');
       
       // Play Messenger pop chime
       playNotificationSound('message');
@@ -1270,20 +1288,17 @@ function App() {
   }
 
   async function startCall(kind, target = selectedChat) {
-    const peerId = target?.peerId || (target?.kind === 'direct' ? target.id : '');
+    const peerId = target?.peerId || target?.id || '';
     if (!peerId) return;
     if (!socketRef.current?.connected) {
-      showToast(t.callOffline);
-      return;
-    }
-    if (!onlineUsers.some((user) => user.id === peerId)) {
-      showToast(t.callOffline);
+      showToast(t.noConnection);
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
       showToast(t.callMediaError);
       return;
     }
+    const isTargetOnline = onlineUsers.some((user) => user.id === peerId);
     const callId = makeUuid();
     const peerName = target.name || `${t.guest} ${peerId.slice(-4)}`;
     const peerAvatar = target.avatar || onlineUsers.find((user) => user.id === peerId)?.avatar || '';
@@ -1291,7 +1306,34 @@ function App() {
     pendingAnswerRef.current = null;
     remoteIceRef.current = [];
     cameraTrackRef.current = null;
-    setCurrentCall({ callId, peerId, peerName, peerAvatar, kind, direction: 'outgoing', status: 'ringing', startedAt: Date.now(), localStream: null, remoteStream: null, muted: false, videoOff: false, speakerOn: true, keypadOpen: false, screenSharing: false, cameraFacing: 'user' });
+    setCurrentCall({
+      callId,
+      peerId,
+      peerName,
+      peerAvatar,
+      kind,
+      direction: 'outgoing',
+      status: 'ringing',
+      isOffline: !isTargetOnline,
+      startedAt: Date.now(),
+      localStream: null,
+      remoteStream: null,
+      muted: false,
+      videoOff: false,
+      speakerOn: true,
+      keypadOpen: false,
+      screenSharing: false,
+      cameraFacing: 'user',
+    });
+
+    if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+    callTimeoutRef.current = setTimeout(() => {
+      if (callRef.current?.callId === callId && callRef.current?.status === 'ringing') {
+        showToast('Call timed out — missed call alert sent');
+        closeCall('missed', true);
+      }
+    }, 42000);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
       if (callRef.current?.callId !== callId) {
@@ -1304,9 +1346,12 @@ function App() {
       const pc = makePeerConnection(callId, peerId, stream);
       socketRef.current.emit('call:start', { callId, toId: peerId, kind }, async (result) => {
         if (!result?.ok) {
-          showToast(result?.error === 'busy' ? t.callBusy : t.callOffline);
+          showToast(result?.error === 'busy' ? t.callBusy : 'Could not place call');
           closeCall(result?.error === 'busy' ? 'missed' : 'failed', false);
           return;
+        }
+        if (result.offline) {
+          showToast('Calling (Offline) — alert notification sent');
         }
         try {
           const offer = await pc.createOffer();
@@ -1351,6 +1396,10 @@ function App() {
   function closeCall(reason = 'ended', notifyPeer = true) {
     const call = callRef.current;
     if (!call) return;
+    if (callTimeoutRef.current) {
+      clearTimeout(callTimeoutRef.current);
+      callTimeoutRef.current = null;
+    }
     if (notifyPeer) socketRef.current?.emit('call:end', { callId: call.callId, toId: call.peerId });
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
@@ -1367,11 +1416,41 @@ function App() {
     offerInFlightRef.current = false;
     setCurrentCall(null);
     const status = reason === 'declined' ? 'declined' : reason === 'missed' || reason === 'failed' || (reason === 'ended' && call.status === 'ringing') ? 'missed' : 'completed';
-    setApp((current) => ({
-      ...current,
-      calls: [{ id: call.callId, peerId: call.peerId, peerName: call.peerName, kind: call.kind, direction: call.direction, status, at: Date.now() }, ...current.calls].slice(0, 60),
-    }));
+    const wasMissed = status === 'missed' || status === 'declined';
+
+    setApp((current) => {
+      let nextChats = current.chats;
+      if (wasMissed) {
+        const missedMsg = {
+          id: `call-missed-${call.callId}`,
+          fromId: call.direction === 'outgoing' ? current.identity.id : call.peerId,
+          toId: call.direction === 'outgoing' ? call.peerId : current.identity.id,
+          senderName: call.direction === 'outgoing' ? current.profile.name : call.peerName,
+          senderAvatar: call.direction === 'outgoing' ? current.profile.avatar : (call.peerAvatar || ''),
+          type: 'call_missed',
+          kind: call.kind,
+          callId: call.callId,
+          text: `Missed ${call.kind === 'video' ? 'video' : 'audio'} call`,
+          createdAt: Date.now(),
+          status: 'read',
+        };
+        const existingChat = current.chats.find((c) => c.peerId === call.peerId);
+        if (existingChat && !existingChat.messages.some((m) => m.id === missedMsg.id)) {
+          nextChats = current.chats.map((c) => c.id === existingChat.id ? { ...c, messages: [...c.messages, missedMsg].slice(-180), updatedAt: Date.now() } : c);
+        }
+      }
+
+      return {
+        ...current,
+        chats: nextChats,
+        calls: [
+          { id: call.callId, peerId: call.peerId, peerName: call.peerName, kind: call.kind, direction: call.direction, status, at: Date.now() },
+          ...current.calls.filter((c) => c.id !== call.callId),
+        ].slice(0, 60),
+      };
+    });
   }
+
 
   function declineCall() {
     const call = callRef.current;
@@ -1996,7 +2075,7 @@ function ConversationView({
             )
           )}
           <div className="message-list">
-            {messages.map((message) => <MessageBubble key={message.id} message={message} own={message.fromId === identity.id} t={t} language={language} />)}
+            {messages.map((message) => <MessageBubble key={message.id} message={message} own={message.fromId === identity.id} t={t} language={language} onCallPeer={(callKind) => onStartCall(callKind)} />)}
           </div>
           {typing && <div className="typing-indicator"><span><i /><i /><i /></span><small>{chat.name}…</small></div>}
           <div ref={messageEndRef} />
@@ -2300,14 +2379,15 @@ function WhatsAppVoicePlayer({ message, own, language }) {
   );
 }
 
-function MessageBubble({ message, own, t, language }) {
+function MessageBubble({ message, own, t, language, onCallPeer }) {
   const time = formatTime(message.createdAt, language);
   const file = message.attachment;
   const isVoice = message.type === 'audio';
+  const isMissedCall = message.type === 'call_missed';
   const statusLabel = message.status === 'read' ? t.messageRead : message.status === 'delivered' ? t.messageDelivered : message.status === 'pending' ? t.messagePending : t.messageSent;
   return (
     <div className={`message-row ${own ? 'message-own' : 'message-theirs'}`}>
-      <div className={`message-bubble ${isVoice ? 'message-bubble-voice' : ''}`}>
+      <div className={`message-bubble ${isVoice ? 'message-bubble-voice' : ''} ${isMissedCall ? 'message-bubble-call' : ''}`}>
         {file?.data && message.type === 'image' && <a href={file.data} target="_blank" rel="noreferrer" className="message-image-link"><img src={file.data} alt={file.name || t.file} /></a>}
         {file?.data && isVoice && <WhatsAppVoicePlayer message={message} own={own} language={language} />}
         {file && message.type === 'file' && (
@@ -2316,9 +2396,34 @@ function MessageBubble({ message, own, t, language }) {
             <span><strong>{file.name || t.file}</strong><small>{formatBytes(file.data?.length ? Math.floor(file.data.length * 0.72) : 0)}</small></span>
           </a>
         )}
-        {message.text && <p className="message-text">{message.text}</p>}
+        {isMissedCall && (
+          <div className="missed-call-card">
+            <div className="missed-call-icon-wrap">
+              {message.kind === 'video' ? <VideoOff size={18} /> : <PhoneOff size={18} />}
+            </div>
+            <div className="missed-call-details">
+              <strong>{message.kind === 'video' ? 'Missed Video Call' : 'Missed Audio Call'}</strong>
+              <small>{own ? 'Outgoing · No answer' : 'Incoming · Tap to call back'}</small>
+            </div>
+            {!own && onCallPeer && (
+              <button
+                type="button"
+                className="missed-call-back-btn"
+                onClick={() => onCallPeer(message.kind || 'audio')}
+                title="Call back"
+              >
+                {message.kind === 'video' ? <Video size={13} /> : <Phone size={13} />}
+                <span>Call back</span>
+              </button>
+            )}
+          </div>
+        )}
+        {message.text && !isMissedCall && <p className="message-text">{message.text}</p>}
         {file && message.type === 'image' && !message.text && <span className="attachment-caption">{file.name}</span>}
-        <span className="message-meta"><time>{time}</time>{own && <span className={`message-status status-${message.status}`} title={statusLabel}>{message.status === 'pending' ? <Clock3 size={13} /> : message.status === 'read' || message.status === 'delivered' ? <CheckCheck size={15} /> : <Check size={14} />}</span>}</span>
+        <span className="message-meta">
+          <time>{time}</time>
+          {own && !isMissedCall && <span className={`message-status status-${message.status}`} title={statusLabel}>{message.status === 'pending' ? <Clock3 size={13} /> : message.status === 'read' || message.status === 'delivered' ? <CheckCheck size={15} /> : <Check size={14} />}</span>}
+        </span>
       </div>
     </div>
   );
@@ -2596,7 +2701,7 @@ function CallOverlay({
   const remoteAudioRef = useRef(null);
   const [duration, setDuration] = useState(0);
   const isIncoming = call.direction === 'incoming' && call.status === 'ringing';
-  const statusText = call.status === 'active' ? formatDuration(duration) : call.status === 'ringing' ? (isIncoming ? t.incomingCall : t.ringing) : t.connectingCall;
+  const statusText = call.status === 'active' ? formatDuration(duration) : call.status === 'ringing' ? (isIncoming ? t.incomingCall : (call.isOffline ? 'Calling (offline alert sent)…' : t.ringing)) : t.connectingCall;
   useEffect(() => {
     if (remoteVideoRef.current && call.remoteStream) remoteVideoRef.current.srcObject = call.remoteStream;
     if (remoteAudioRef.current && call.remoteStream) remoteAudioRef.current.srcObject = call.remoteStream;

@@ -384,26 +384,29 @@ io.on('connection', (socket) => {
     const toId = normaliseId(payload.toId);
     const kind = payload.kind === 'video' ? 'video' : 'audio';
     const callId = String(payload.callId ?? '').slice(0, 100);
-    const target = activeUsers.get(toId);
+    const caller = activeUsers.get(fromId) || registeredProfiles.get(fromId);
+
     if (!fromId || !validId(toId) || fromId === toId || !callId) {
       ackWith(ack, { ok: false, error: 'invalid-call' });
       return;
     }
-    if (!target) {
-      // Send background push call notification so device rings even if closed!
-      sendPushNotification(toId, {
-        type: 'call',
-        callId,
-        fromId,
-        fromName: caller?.name ?? 'User',
-        fromAvatar: caller?.avatar ?? '',
-        kind,
-      });
-      ackWith(ack, { ok: false, error: 'offline' });
+    if (userCalls.has(fromId) || userCalls.has(toId)) {
+      ackWith(ack, { ok: false, error: 'busy' });
       return;
     }
 
-    // Also send push alert in case app is minimized
+    calls.set(callId, {
+      a: fromId,
+      b: toId,
+      kind,
+      callerName: caller?.name ?? 'User',
+      callerAvatar: caller?.avatar ?? '',
+      startedAt: Date.now(),
+    });
+    userCalls.set(fromId, callId);
+    userCalls.set(toId, callId);
+
+    // Send background Web Push Notification to wake up recipient's phone/browser
     sendPushNotification(toId, {
       type: 'call',
       callId,
@@ -412,15 +415,32 @@ io.on('connection', (socket) => {
       fromAvatar: caller?.avatar ?? '',
       kind,
     });
-    if (userCalls.has(fromId) || userCalls.has(toId)) {
-      ackWith(ack, { ok: false, error: 'busy' });
+
+    const target = activeUsers.get(toId);
+    if (!target) {
+      // Recipient is OFFLINE: Queue a missed call record into their inbox
+      const missedNotice = {
+        id: `call-missed-${callId}`,
+        fromId,
+        toId,
+        senderName: caller?.name ?? 'User',
+        senderUsername: caller?.username ?? '',
+        senderAvatar: caller?.avatar ?? '',
+        type: 'call_missed',
+        kind,
+        callId,
+        text: `Missed ${kind === 'video' ? 'video' : 'audio'} call`,
+        createdAt: Date.now(),
+      };
+      const queue = inboxes.get(toId) ?? [];
+      if (!queue.some((item) => item.id === missedNotice.id)) queue.push(missedNotice);
+      inboxes.set(toId, queue.slice(-200));
+
+      ackWith(ack, { ok: true, offline: true });
       return;
     }
 
-    const caller = activeUsers.get(fromId) || registeredProfiles.get(fromId);
-    calls.set(callId, { a: fromId, b: toId });
-    userCalls.set(fromId, callId);
-    userCalls.set(toId, callId);
+    // Recipient is ONLINE: Send live incoming call event
     io.to(roomFor(toId)).emit('call:incoming', {
       callId,
       fromId,
@@ -428,7 +448,7 @@ io.on('connection', (socket) => {
       fromAvatar: caller?.avatar ?? '',
       kind,
     });
-    ackWith(ack, { ok: true });
+    ackWith(ack, { ok: true, online: true });
   });
 
   socket.on('call:respond', (payload = {}) => {
@@ -463,7 +483,29 @@ io.on('connection', (socket) => {
   socket.on('call:end', (payload = {}) => {
     const fromId = socketGuests.get(socket.id);
     const callId = String(payload.callId ?? '').slice(0, 100);
-    if (!fromId || !calls.has(callId) || !getPeer(calls.get(callId), fromId)) return;
+    const call = calls.get(callId);
+    if (!fromId || !call) return;
+    const recipientId = getPeer(call, fromId);
+    if (recipientId) {
+      const recipientTarget = activeUsers.get(recipientId);
+      if (!recipientTarget || !recipientTarget.sockets.size) {
+        const missedNotice = {
+          id: `call-missed-${callId}`,
+          fromId,
+          toId: recipientId,
+          senderName: call.callerName || 'User',
+          senderAvatar: call.callerAvatar || '',
+          type: 'call_missed',
+          kind: call.kind || 'audio',
+          callId,
+          text: `Missed ${call.kind === 'video' ? 'video' : 'audio'} call`,
+          createdAt: Date.now(),
+        };
+        const queue = inboxes.get(recipientId) ?? [];
+        if (!queue.some((item) => item.id === missedNotice.id)) queue.push(missedNotice);
+        inboxes.set(recipientId, queue.slice(-200));
+      }
+    }
     removeCall(callId, fromId);
   });
 
