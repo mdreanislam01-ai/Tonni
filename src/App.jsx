@@ -32,6 +32,8 @@ import {
   Moon,
   MoreHorizontal,
   Paperclip,
+  Pause,
+  Play,
   Phone,
   PhoneOff,
   Pin,
@@ -538,7 +540,15 @@ function App() {
   incomingCallRef.current = handleIncomingCall;
 
   useEffect(() => {
-    const socket = io({ autoConnect: false, reconnection: true, timeout: 8000 });
+    const envSocketUrl = import.meta.env.VITE_SOCKET_URL;
+    const runtimeSocketUrl = typeof window !== 'undefined'
+      ? (new URLSearchParams(window.location.search).get('backend') || window.__SOCKET_URL__ || localStorage.getItem('ym_backend_url'))
+      : null;
+    const targetUrl = envSocketUrl || runtimeSocketUrl || undefined;
+
+    const socket = targetUrl
+      ? io(targetUrl, { autoConnect: false, reconnection: true, timeout: 8000, transports: ['websocket', 'polling'] })
+      : io({ autoConnect: false, reconnection: true, timeout: 8000 });
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -1000,7 +1010,16 @@ function App() {
         }
         if (!blob.size || !targetChatId) return;
         const data = await readAsDataUrl(blob);
-        sendToChat(targetChatId, { type: 'audio', text: '', attachment: { name: `voice-${Date.now()}.webm`, mime: blob.type || 'audio/webm', data } });
+        sendToChat(targetChatId, {
+          type: 'audio',
+          text: '',
+          attachment: {
+            name: `voice-${Date.now()}.webm`,
+            mime: blob.type || 'audio/webm',
+            data,
+            duration: recordingSeconds || 0,
+          }
+        });
       };
       recorder.start(180);
       setRecording(true);
@@ -1778,15 +1797,219 @@ function ConversationView({
   );
 }
 
+function generateWaveformBars(seedStr, count = 30) {
+  let hash = 0;
+  const str = String(seedStr || 'voice-note');
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const bars = [];
+  for (let i = 0; i < count; i++) {
+    const sinFactor = Math.sin((i / (count - 1)) * Math.PI);
+    const pseudo = Math.abs(Math.sin((hash + i * 19) * 9301 + 49297));
+    const h = Math.round(5 + (sinFactor * 0.45 + pseudo * 0.55) * 21);
+    bars.push(Math.max(5, Math.min(26, h)));
+  }
+  return bars;
+}
+
+function formatVoiceTime(seconds) {
+  if (!isFinite(seconds) || seconds < 0 || isNaN(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function WhatsAppVoicePlayer({ message, own, language }) {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(Number(message.attachment?.duration) || 0);
+  const [playbackRate, setPlaybackRate] = useState(1);
+
+  const bars = useMemo(() => generateWaveformBars(message.id || message.createdAt, 30), [message.id, message.createdAt]);
+  const audioSrc = message.attachment?.data;
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleLoadedMetadata = () => {
+      if (isFinite(audio.duration) && audio.duration > 0) {
+        setDuration(audio.duration);
+      }
+    };
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      if ((!duration || !isFinite(duration)) && isFinite(audio.duration) && audio.duration > 0) {
+        setDuration(audio.duration);
+      }
+    };
+
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      audio.currentTime = 0;
+    };
+
+    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => setIsPlaying(true);
+
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('play', handlePlay);
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('play', handlePlay);
+    };
+  }, [duration]);
+
+  const togglePlay = (e) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.playbackRate = playbackRate;
+      audio.play().catch((err) => {
+        console.warn('Playback error:', err);
+      });
+    }
+  };
+
+  const handleWaveformClick = (e) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const ratio = clickX / rect.width;
+    const effectiveDur = duration || (isFinite(audio.duration) ? audio.duration : 0);
+    if (effectiveDur > 0) {
+      const targetTime = ratio * effectiveDur;
+      audio.currentTime = targetTime;
+      setCurrentTime(targetTime);
+      if (!isPlaying) {
+        audio.playbackRate = playbackRate;
+        audio.play().catch(() => {});
+      }
+    }
+  };
+
+  const cycleSpeed = (e) => {
+    e.stopPropagation();
+    const rates = [1, 1.5, 2];
+    const nextIdx = (rates.indexOf(playbackRate) + 1) % rates.length;
+    const nextRate = rates[nextIdx];
+    setPlaybackRate(nextRate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = nextRate;
+    }
+  };
+
+  const effectiveDuration = duration > 0 ? duration : (isFinite(audioRef.current?.duration) ? audioRef.current.duration : 0);
+  const progressRatio = effectiveDuration > 0 ? Math.min(1, currentTime / effectiveDuration) : 0;
+  const displayTime = isPlaying
+    ? formatVoiceTime(currentTime)
+    : formatVoiceTime(effectiveDuration);
+
+  const senderName = message.senderName || 'Guest';
+  const senderPhoto = message.senderAvatar;
+
+  return (
+    <div className={`whatsapp-voice-player ${own ? 'wa-player-own' : 'wa-player-theirs'} ${isPlaying ? 'wa-playing' : ''}`}>
+      <audio ref={audioRef} src={audioSrc} preload="metadata" />
+
+      <div className="wa-avatar-wrap">
+        <Avatar name={senderName} id={message.fromId} size="md" photo={senderPhoto} />
+        <span className="wa-mic-badge" title="Voice Message">
+          <Mic size={10} strokeWidth={2.8} />
+        </span>
+      </div>
+
+      <div className="wa-player-body">
+        <button
+          type="button"
+          className="wa-play-btn"
+          onClick={togglePlay}
+          aria-label={isPlaying ? 'Pause' : 'Play voice message'}
+        >
+          {isPlaying ? (
+            <Pause size={16} fill="currentColor" strokeWidth={0} />
+          ) : (
+            <Play size={16} fill="currentColor" strokeWidth={0} className="wa-play-icon" />
+          )}
+        </button>
+
+        <div className="wa-content-col">
+          <div
+            className="wa-waveform-container"
+            onClick={handleWaveformClick}
+            title="Click to seek"
+            role="slider"
+            aria-valuenow={Math.round(progressRatio * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div className="wa-waveform-bars">
+              {bars.map((barHeight, idx) => {
+                const barRatio = idx / (bars.length - 1);
+                const isPlayed = barRatio <= progressRatio;
+                return (
+                  <span
+                    key={idx}
+                    className={`wa-bar ${isPlayed ? 'wa-bar-played' : 'wa-bar-unplayed'}`}
+                    style={{
+                      height: `${barHeight}px`,
+                      animationDelay: isPlaying ? `${(idx % 6) * 0.1}s` : '0s'
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <div
+              className="wa-scrubber-dot"
+              style={{ left: `${progressRatio * 100}%` }}
+            />
+          </div>
+
+          <div className="wa-footer-row">
+            <span className="wa-time-label">{displayTime}</span>
+            <button
+              type="button"
+              className={`wa-speed-pill ${playbackRate > 1 ? 'wa-speed-boosted' : ''}`}
+              onClick={cycleSpeed}
+              title="Toggle playback speed"
+            >
+              {playbackRate}x
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({ message, own, t, language }) {
   const time = formatTime(message.createdAt, language);
   const file = message.attachment;
+  const isVoice = message.type === 'audio';
   const statusLabel = message.status === 'read' ? t.messageRead : message.status === 'delivered' ? t.messageDelivered : message.status === 'pending' ? t.messagePending : t.messageSent;
   return (
     <div className={`message-row ${own ? 'message-own' : 'message-theirs'}`}>
-      <div className="message-bubble">
+      <div className={`message-bubble ${isVoice ? 'message-bubble-voice' : ''}`}>
         {file?.data && message.type === 'image' && <a href={file.data} target="_blank" rel="noreferrer" className="message-image-link"><img src={file.data} alt={file.name || t.file} /></a>}
-        {file?.data && message.type === 'audio' && <audio className="message-audio" controls preload="metadata" src={file.data} />}
+        {file?.data && isVoice && <WhatsAppVoicePlayer message={message} own={own} language={language} />}
         {file && message.type === 'file' && (
           <a className="attachment-card" href={file.data || undefined} download={file.name} target={file.data ? '_blank' : undefined} rel="noreferrer">
             <span className="attachment-icon"><FileText size={19} /></span>
