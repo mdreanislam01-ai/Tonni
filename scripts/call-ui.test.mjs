@@ -6,11 +6,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
 import assert from 'node:assert/strict';
 
-const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
+const vite = await createServer({ server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, include: [] }, appType: 'custom', logLevel: 'error' });
 const mod = await vite.ssrLoadModule('/src/App.jsx');
 const { CallOverlay, RecordingsDialog, RecordingSavedCard, CallsWorkspace } = mod;
 const t = new Proxy({}, { get: (_target, key) => String(key) });
 const noop = () => {};
+const controlsMarkup = (markup) => markup.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/)?.[0] || '';
+const controlLabels = (markup) => [...controlsMarkup(markup).matchAll(/<span>([^<]*)<\/span><\/button>/g)].map((match) => match[1]);
 
 const baseCall = {
   callId: 'c1', peerId: 'YM-ABC123', peerName: 'Tonni', peerAvatar: '', kind: 'video',
@@ -28,9 +30,27 @@ let html = renderToStaticMarkup(React.createElement(CallOverlay, {
 }));
 assert.match(html, /call-recording-badge/, 'REC badge should render while recording');
 assert.match(html, /01:15/, 'badge should show the recording clock');
-assert.match(html, /record-control-active/, 'record button should show the active state');
-assert.match(html, /stopRecording/, 'active label should come from t.stopRecording');
-assert.match(html, /screen-sharing|Share/i, 'screen share control still present');
+assert.match(html, /stopRecording/, 'recording badge should retain its stop hint');
+assert.match(controlsMarkup(html), /video-call-controls/, 'video controls should use the compact layout');
+assert.match(controlsMarkup(html), /aria-haspopup="menu"/, 'More should announce its popup');
+assert.match(controlsMarkup(html), /aria-expanded="false"/, 'More should start collapsed');
+assert.deepEqual(controlLabels(html), ['mute', 'cameraOff', 'more', 'switchCamera', 'endCall'], 'video controls should keep their requested order');
+assert.equal((controlsMarkup(html).match(/<button\b/g) || []).length, 5, 'only four primary controls and End call should render');
+assert.doesNotMatch(controlsMarkup(html), /call-more-menu|record-control|screenShare|recordScreen|stopRecording/, 'share and recording actions must stay hidden even while recording');
+
+// Share/record actions also stay hidden before opening More in other outgoing states.
+for (const status of ['ringing', 'connecting', 'active']) {
+  html = renderToStaticMarkup(React.createElement(CallOverlay, {
+    call: { ...baseCall, status, screenSharing: true, muted: true, videoOff: true }, t, language: 'en',
+    onAccept: noop, onDecline: noop, onEnd: noop, onMute: noop, onVideo: noop, onSpeaker: noop,
+    onKeypad: noop, onDigit: noop, onScreenShare: noop, onSwitchCamera: noop,
+    onRecordScreen: noop, screenRecording: false, screenRecordingSeconds: 0,
+  }));
+  assert.deepEqual(controlLabels(html), ['unmute', 'cameraOn', 'more', 'switchCamera', 'endCall'], `${status}: primary toggle labels should remain intact`);
+  assert.doesNotMatch(controlsMarkup(html), /call-more-menu|screenShare|recordScreen|stopScreenShare/, `${status}: menu actions should not render until opened`);
+  assert.match(html, /screen-sharing-indicator/, 'existing sharing status should remain visible');
+  assert.doesNotMatch(html, /call-recording-badge/, 'recording badge should stay hidden when not recording');
+}
 
 // 2. Audio call gets the record control too.
 html = renderToStaticMarkup(React.createElement(CallOverlay, {
@@ -41,6 +61,8 @@ html = renderToStaticMarkup(React.createElement(CallOverlay, {
 }));
 assert.match(html, /record-control/, 'audio calls should expose recording');
 assert.doesNotMatch(html, /call-recording-badge/, 'no badge when not recording');
+assert.doesNotMatch(html, /call-more-options|video-call-controls/, 'audio call controls must not change');
+assert.deepEqual(controlLabels(html), ['mute', 'keypad', 'speaker', 'recordScreen', 'endCall'], 'audio calls should retain all existing controls');
 
 // 3. Ringing call shows answer/decline only.
 html = renderToStaticMarkup(React.createElement(CallOverlay, {
@@ -49,7 +71,8 @@ html = renderToStaticMarkup(React.createElement(CallOverlay, {
   onKeypad: noop, onDigit: noop, onScreenShare: noop, onSwitchCamera: noop,
   onRecordScreen: noop, screenRecording: false, screenRecordingSeconds: 0,
 }));
-assert.doesNotMatch(html, /record-control/, 'ringing state must not offer recording yet');
+assert.doesNotMatch(html, /record-control|call-more-options|video-call-controls/, 'incoming ringing controls must not change');
+assert.deepEqual(controlLabels(html), ['decline', 'answer'], 'incoming calls should still show only answer/decline');
 
 // 4. Recordings dialog with items and empty.
 const items = [{

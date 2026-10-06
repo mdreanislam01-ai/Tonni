@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import {
   ArrowDownLeft,
@@ -33,6 +33,7 @@ import {
   MicOff,
   Moon,
   MoreHorizontal,
+  MoreVertical,
   Palette,
   Paperclip,
   Pause,
@@ -171,6 +172,7 @@ const words = {
     screenShare: 'Share screen', stopScreenShare: 'Stop sharing', allowScreenShare: 'Allow screen sharing?',
     screenShareHint: 'Your browser will ask you to choose a screen or window. You can stop sharing at any time.',
     allow: 'Allow', speaker: 'Speaker', speakerOff: 'Speaker off', keypad: 'Keypad', switchCamera: 'Switch camera',
+    more: 'More', moreOptions: 'More options',
     contactsImport: 'Import contacts', manageContacts: 'Manage contacts', contactsImportHint: 'Contacts are only accessed after you choose Import.',
     contactsUnsupported: 'This browser does not support contact import. You can still add people by You and Me ID.',
     dataStorageHint: 'Your message history and preferences are stored on this device.',
@@ -3301,6 +3303,111 @@ function SettingsDialog({
   );
 }
 
+function CallMoreOptions({ t, screenSharing, screenRecording, onScreenShare, onRecordScreen }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector('[role="menuitem"]')?.focus();
+
+    const dismissOutside = (event) => {
+      if (!containerRef.current?.contains(event.target)) setOpen(false);
+    };
+    const dismissOnEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', dismissOutside);
+    document.addEventListener('focusin', dismissOutside);
+    document.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+      document.removeEventListener('focusin', dismissOutside);
+      document.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [open]);
+
+  function runAction(action) {
+    setOpen(false);
+    triggerRef.current?.focus();
+    // Keep the existing handler in the click event's browser user activation.
+    action();
+  }
+
+  function handleMenuKeyDown(event) {
+    if (event.key === 'Tab') {
+      setOpen(false);
+      triggerRef.current?.focus();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const items = [...menuRef.current.querySelectorAll('[role="menuitem"]')];
+    const current = items.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus();
+  }
+
+  return (
+    <div className="call-more-options" ref={containerRef}>
+      <button
+        type="button"
+        className="call-control utility-control call-more-trigger"
+        id={`${menuId}-trigger`}
+        ref={triggerRef}
+        title={t.moreOptions}
+        aria-label={t.moreOptions}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <span className="control-round"><MoreVertical size={18} /></span>
+        <span>{t.more}</span>
+      </button>
+      {open && (
+        <div className="call-more-menu" id={menuId} ref={menuRef} role="menu" aria-labelledby={`${menuId}-trigger`} onKeyDown={handleMenuKeyDown}>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            className={`call-menu-item ${screenSharing ? 'call-menu-item-active' : ''}`}
+            onClick={() => runAction(onScreenShare)}
+            title={screenSharing ? t.stopScreenShare : t.screenShare}
+          >
+            {screenSharing ? <MonitorX size={18} /> : <MonitorUp size={18} />}
+            <span>{screenSharing ? t.stopScreenShare : t.screenShare}</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            className={`call-menu-item call-menu-record ${screenRecording ? 'call-menu-item-recording' : ''}`}
+            onClick={() => runAction(onRecordScreen)}
+            title={screenRecording ? t.stopRecording : `${t.recordScreen} — ${t.recordingHint}`}
+          >
+            {screenRecording ? <Square size={16} /> : <Film size={18} />}
+            <span>{screenRecording ? t.stopRecording : t.recordScreen}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CallOverlay({
   call, t, language, onAccept, onDecline, onEnd, onMute, onVideo, onSpeaker, onKeypad, onDigit,
   onScreenShare, onSwitchCamera, onRecordScreen, screenRecording, screenRecordingSeconds,
@@ -3356,7 +3463,7 @@ export function CallOverlay({
           <div className="call-stage-person"><strong>{call.peerName}</strong><small>{call.kind === 'video' ? t.videoCall : t.audioCall}</small></div>
           {call.keypadOpen && call.kind === 'audio' && <div className="call-keypad">{digits.map((digit) => <button key={digit} onClick={() => onDigit(digit)}>{digit}</button>)}<button className="keypad-close" onClick={onKeypad}>Close</button></div>}
         </div>
-        <footer className="call-controls">
+        <footer className={`call-controls${call.kind === 'video' && !isIncoming ? ' video-call-controls' : ''}`}>
           {isIncoming ? (
             <>
               <button className="call-control decline-control" onClick={onDecline}><PhoneOff size={20} /><span>{t.decline}</span></button>
@@ -3372,8 +3479,13 @@ export function CallOverlay({
               </>}
               {call.kind === 'video' && <>
                 <button className={`call-control utility-control ${call.videoOff ? 'control-active' : ''}`} onClick={onVideo} title={call.videoOff ? t.cameraOn : t.cameraOff}><span className="control-round">{call.videoOff ? <VideoOff size={18} /> : <Video size={18} />}</span><span>{call.videoOff ? t.cameraOn : t.cameraOff}</span></button>
-                <button className={`call-control utility-control ${call.screenSharing ? 'control-active' : ''}`} onClick={onScreenShare} title={call.screenSharing ? t.stopScreenShare : t.screenShare}><span className="control-round">{call.screenSharing ? <MonitorX size={18} /> : <MonitorUp size={18} />}</span><span>{call.screenSharing ? t.stop : t.screenShare}</span></button>
-                {recordButton}
+                <CallMoreOptions
+                  t={t}
+                  screenSharing={call.screenSharing}
+                  screenRecording={screenRecording}
+                  onScreenShare={onScreenShare}
+                  onRecordScreen={onRecordScreen}
+                />
                 <button className="call-control utility-control" onClick={onSwitchCamera} title={t.switchCamera}><span className="control-round"><Camera size={18} /></span><span>{t.switchCamera}</span></button>
               </>}
               <button className="call-control decline-control" onClick={onEnd} title={t.endCall}><PhoneOff size={20} /><span>{t.endCall}</span></button>
