@@ -62,6 +62,20 @@ const STORAGE_KEY = 'you-and-me.local.v1';
 const ID_PATTERN = /^YM-[A-Z0-9]{6}$/;
 const ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+const VAPID_PUBLIC_KEY = 'BBcmeZ7W_lOStUVhoU4vb2GzTOuFjErD5VJTuZqaa_5i4UK-w8WfKeOfznfrT6YohkN0omVXB7wlPlrPOMeYIV0';
+
 const THEMES = [
   { id: 'light', label: 'Classic Light', swatch: '#2563eb', desc: 'Clean Blue & White' },
   { id: 'dark', label: 'Dark Mode', swatch: '#151f32', desc: 'Soft Dark Theme' },
@@ -335,6 +349,50 @@ function App() {
   const [topNotification, setTopNotification] = useState(null);
   const [floatingChatHeads, setFloatingChatHeads] = useState([]);
   const topNotifTimerRef = useRef(null);
+
+  // Register Service Worker for Background Web Push & PWA
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        // Auto subscribe if permission is already granted
+        if (Notification.permission === 'granted' && socketRef.current?.connected) {
+          subscribeToPush(socketRef.current);
+        }
+      }).catch((err) => {
+        console.warn('SW register error:', err);
+      });
+    }
+  }, []);
+
+  async function subscribeToPush(socket = socketRef.current) {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+      if (sub && socket?.connected) {
+        socket.emit('push:subscribe', { subscription: sub.toJSON() });
+      }
+    } catch (err) {
+      console.warn('Push subscription error:', err);
+    }
+  }
+
+  async function unsubscribeFromPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+      socketRef.current?.emit('push:unsubscribe');
+    } catch (err) {}
+  }
+
   const [toast, setToast] = useState('');
   const [typingPeers, setTypingPeers] = useState({});
   const [callState, setCallState] = useState(null);
@@ -598,8 +656,9 @@ function App() {
         const perm = await Notification.requestPermission();
         if (perm === 'granted') {
           updateSettings({ notifications: true });
+          await subscribeToPush(socketRef.current);
           playNotificationSound('message');
-          showToast('নোটিফিকেশন সফলভাবে চালু হয়েছে!');
+          showToast('ব্যাকগ্রাউন্ড কল ও মেসেজ নোটিফিকেশন চালু হয়েছে!');
         }
       } catch (err) {
         console.warn('Notification permission error:', err);
@@ -655,6 +714,9 @@ function App() {
 
     socket.on('connect', () => {
       setConnectionStatus('connecting');
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        subscribeToPush(socket);
+      }
       const latest = latestAppRef.current;
       socket.emit('guest:register', {
         id: app.identity.id,
@@ -2465,8 +2527,15 @@ function SettingsDialog({
               </>}
 
               {section === 'notifications' && <>
-                <button className="setting-toggle-row setting-card-row" onClick={() => app.settings.notifications ? onSettings({ notifications: false }) : enableNotifications()}><span className="setting-row-icon"><Bell size={17} /></span><span><strong>{t.enableNotifications}</strong><small>{noticePermission === 'granted' ? 'Browser permission granted' : 'Permission is requested only after you enable this.'}</small></span><span className={`toggle-switch ${app.settings.notifications ? 'toggle-on' : ''}`}><i /></span></button>
-                <button className="setting-toggle-row setting-card-row" onClick={() => onSettings({ sound: !app.settings.sound })}><span className="setting-row-icon">{app.settings.sound ? <Volume2 size={17} /> : <VolumeX size={17} />}</span><span><strong>{t.sound}</strong><small>Play a short tone for new messages while the tab is open.</small></span><span className={`toggle-switch ${app.settings.sound ? 'toggle-on' : ''}`}><i /></span></button>
+                <button className="setting-toggle-row setting-card-row" onClick={() => app.settings.notifications ? onSettings({ notifications: false }) : enableNotifications()}><span className="setting-row-icon"><Bell size={17} /></span><span><strong>{t.enableNotifications}</strong><small>{noticePermission === 'granted' ? 'Notification permission granted' : 'Tap to grant permission.'}</small></span><span className={`toggle-switch ${app.settings.notifications ? 'toggle-on' : ''}`}><i /></span></button>
+                <button className="setting-toggle-row setting-card-row" onClick={() => {
+                  const nextVal = !app.settings.backgroundAlerts;
+                  onSettings({ backgroundAlerts: nextVal });
+                  if (nextVal) {
+                    enableNotifications();
+                  }
+                }}><span className="setting-row-icon"><Smartphone size={17} /></span><span><strong>ব্যাকগ্রাউন্ড কল ও মেসেজ অ্যালার্ট</strong><small>ওয়েবসাইট বন্ধ থাকলেও মোবাইলে কল ও মেসেজের রিংটোন/নোটিফিকেশন আসবে।</small></span><span className={`toggle-switch ${app.settings.backgroundAlerts !== false && app.settings.notifications ? 'toggle-on' : ''}`}><i /></span></button>
+                <button className="setting-toggle-row setting-card-row" onClick={() => onSettings({ sound: !app.settings.sound })}><span className="setting-row-icon">{app.settings.sound ? <Volume2 size={17} /> : <VolumeX size={17} />}</span><span><strong>{t.sound}</strong><small>Play chime sounds for incoming messages & calls.</small></span><span className={`toggle-switch ${app.settings.sound ? 'toggle-on' : ''}`}><i /></span></button>
               </>}
 
               {section === 'data' && <>

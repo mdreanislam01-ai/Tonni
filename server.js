@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import webpush from 'web-push';
 import { Server as SocketServer } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 
@@ -26,6 +27,52 @@ try {
 }
 
 const registeredProfiles = new Map(); // id -> profile
+
+const VAPID_PUBLIC_KEY = 'BBcmeZ7W_lOStUVhoU4vb2GzTOuFjErD5VJTuZqaa_5i4UK-w8WfKeOfznfrT6YohkN0omVXB7wlPlrPOMeYIV0';
+const VAPID_PRIVATE_KEY = '4P_QUL5chQyFxSGeMrW8Y18bsvmJi3PC_dqncr2q3PI';
+
+try {
+  webpush.setVapidDetails(
+    'mailto:support@rmfbd.online',
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY
+  );
+} catch (err) {
+  console.warn('VAPID setup error:', err.message);
+}
+
+const pushSubscriptions = new Map(); // guestId -> subscription object
+const subsFile = path.join(dataDir, 'subscriptions.json');
+
+try {
+  if (fs.existsSync(subsFile)) {
+    const data = JSON.parse(fs.readFileSync(subsFile, 'utf-8'));
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (item?.id && item?.subscription) pushSubscriptions.set(item.id, item.subscription);
+      }
+    }
+  }
+} catch {}
+
+function saveSubscriptions() {
+  try {
+    const list = [...pushSubscriptions.entries()].map(([id, subscription]) => ({ id, subscription }));
+    fs.writeFileSync(subsFile, JSON.stringify(list, null, 2), 'utf-8');
+  } catch {}
+}
+
+function sendPushNotification(targetId, payload) {
+  const sub = pushSubscriptions.get(targetId);
+  if (!sub) return;
+  webpush.sendNotification(sub, JSON.stringify(payload)).catch((err) => {
+    if (err.statusCode === 404 || err.statusCode === 410) {
+      pushSubscriptions.delete(targetId);
+      saveSubscriptions();
+    }
+  });
+}
+
 
 function loadSavedProfiles() {
   try {
@@ -51,6 +98,10 @@ function saveProfilesToDisk() {
     console.warn('Could not save profiles to disk:', err.message);
   }
 }
+
+app.get('/api/vapid-key', (_req, res) => {
+  res.json({ ok: true, publicKey: VAPID_PUBLIC_KEY });
+});
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, app: 'You and Me', online: activeUsers.size, profiles: registeredProfiles.size });
@@ -225,6 +276,21 @@ io.on('connection', (socket) => {
     });
   });
 
+
+  socket.on('push:subscribe', (payload = {}) => {
+    const id = socketGuests.get(socket.id);
+    if (!id || !payload.subscription) return;
+    pushSubscriptions.set(id, payload.subscription);
+    saveSubscriptions();
+  });
+
+  socket.on('push:unsubscribe', () => {
+    const id = socketGuests.get(socket.id);
+    if (!id) return;
+    pushSubscriptions.delete(id);
+    saveSubscriptions();
+  });
+
   socket.on('message:send', (payload = {}, ack) => {
     const senderId = socketGuests.get(socket.id);
     const sender = (senderId && activeUsers.get(senderId)) || registeredProfiles.get(senderId);
@@ -272,6 +338,15 @@ io.on('connection', (socket) => {
       const queue = inboxes.get(toId) ?? [];
       if (!queue.some((item) => item.id === messageId)) queue.push(message);
       inboxes.set(toId, queue.slice(-200));
+
+      // Send background push notification to wake up device!
+      sendPushNotification(toId, {
+        type: 'message',
+        fromId: senderId,
+        fromName: sender.name,
+        fromAvatar: sender.avatar,
+        text: text || (type === 'audio' ? '🎤 Voice message' : '📷 Photo'),
+      });
     }
     ackWith(ack, { ok: true, status: target ? 'delivered' : 'sent' });
   });
@@ -315,9 +390,28 @@ io.on('connection', (socket) => {
       return;
     }
     if (!target) {
+      // Send background push call notification so device rings even if closed!
+      sendPushNotification(toId, {
+        type: 'call',
+        callId,
+        fromId,
+        fromName: caller?.name ?? 'User',
+        fromAvatar: caller?.avatar ?? '',
+        kind,
+      });
       ackWith(ack, { ok: false, error: 'offline' });
       return;
     }
+
+    // Also send push alert in case app is minimized
+    sendPushNotification(toId, {
+      type: 'call',
+      callId,
+      fromId,
+      fromName: caller?.name ?? 'User',
+      fromAvatar: caller?.avatar ?? '',
+      kind,
+    });
     if (userCalls.has(fromId) || userCalls.has(toId)) {
       ackWith(ack, { ok: false, error: 'busy' });
       return;

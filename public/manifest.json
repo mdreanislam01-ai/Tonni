@@ -1,0 +1,17 @@
+{
+  "short_name": "You and Me",
+  "name": "You and Me — Connect. Call. Chat.",
+  "description": "A no-sign-up, guest-first messaging and calling app.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#00a884",
+  "display": "standalone",
+  "orientation": "portrait"
+}
