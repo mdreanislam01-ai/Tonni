@@ -82,23 +82,39 @@ self.addEventListener('push', (event) => {
     return;
   }
 
+  if (payload.type !== 'message') return;
+
   const fromId = encodeURIComponent(payload.fromId || '');
   const options = {
     body: payload.text || 'New message received',
     icon: payload.fromAvatar || '/favicon.svg',
     badge: '/favicon.svg',
     tag: `msg-${payload.fromId || Date.now()}`,
-    renotify: false,
+    renotify: true,
     vibrate: [150, 80, 150],
     data: {
-      url: `/?to=${fromId}`,
+      type: 'message',
+      // A notification opens straight into a compact, focused chat surface.
+      url: `/?to=${fromId}&quickChat=1`,
+      fullUrl: `/?to=${fromId}`,
       fromId: payload.fromId,
     },
     actions: [
-      { action: 'open', title: '💬 Open Chat (খুলুন)' },
+      { action: 'reply', title: 'Reply' },
+      { action: 'open', title: 'Open app' },
     ],
   };
-  event.waitUntil(self.registration.showNotification(payload.fromName || 'You and Me', options));
+
+  event.waitUntil((async () => {
+    // Web Push may be sent even while a socket is connected (for example, when
+    // a mobile browser has suspended its page). Avoid a duplicate OS alert if
+    // the app is already on screen and focused; the page shows its in-app head.
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const appIsFocused = windows.some((client) => client.visibilityState === 'visible' && client.focused);
+    if (appIsFocused) return;
+
+    await self.registration.showNotification(payload.fromName || 'You and Me', options);
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -106,10 +122,12 @@ self.addEventListener('notificationclick', (event) => {
   notification.close();
   const data = notification.data || {};
   const isCall = data.type === 'call';
+  const isMessage = data.type === 'message';
   const action = ['answer', 'decline'].includes(event.action) ? event.action : 'open';
+  const url = isMessage && event.action === 'open' ? data.fullUrl : data.url;
 
   event.waitUntil((async () => {
-    const targetUrl = new URL(data.url || '/', self.location.origin);
+    const targetUrl = new URL(url || '/', self.location.origin);
     if (isCall) {
       targetUrl.searchParams.set('callId', data.callId);
       targetUrl.searchParams.set('callAction', action);

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 
 const vite = await createServer({ server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, include: [] }, appType: 'custom', logLevel: 'error' });
 const mod = await vite.ssrLoadModule('/src/App.jsx');
-const { CallOverlay, RecordingsDialog, RecordingSavedCard, CallsWorkspace } = mod;
+const { CallOverlay, RecordingsDialog, RecordingSavedCard, CallsWorkspace, MessengerChatPanel } = mod;
 const t = new Proxy({}, { get: (_target, key) => String(key) });
 const noop = () => {};
 const controlsMarkup = (markup) => markup.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/)?.[0] || '';
@@ -116,6 +116,18 @@ html = renderToStaticMarkup(React.createElement(CallsWorkspace, {
 }));
 assert.match(html, /recordings-strip/, 'calls page should advertise recordings');
 
+// 7. Messenger-style floating/quick chat surface for chat-head and push entry.
+html = renderToStaticMarkup(React.createElement(MessengerChatPanel, {
+  chat: { id: 'YM-ABC123', peerId: 'YM-ABC123', name: 'Tonni', avatar: '', kind: 'direct' },
+  identity: { id: 'YM-DEF456' },
+  messages: [{ id: 'm1', fromId: 'YM-ABC123', text: 'Are you free to talk?', type: 'text', createdAt: Date.now(), status: 'delivered' }],
+  isOnline: true, typing: false, t, language: 'en', onClose: noop, onOpenFull: noop, onSend: noop,
+}));
+assert.match(html, /messenger-chat-window/, 'compact chat surface should render');
+assert.match(html, /Tonni/, 'peer name should render in the chat header');
+assert.match(html, /Are you free to talk\?/, 'chat history should render');
+assert.match(html, /aria-label="send"/, 'quick chat should expose a send control');
+
 await vite.close();
-console.log('✅ UI smoke test passed (call overlay, recordings dialog, saved card, calls page)');
+console.log('✅ UI smoke test passed (call overlay, recordings, calls page, quick chat panel)');
 process.exit(0);
