@@ -10,6 +10,14 @@ import { createServer as createViteServer } from 'vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isProduction = process.env.NODE_ENV === 'production';
+// Build version, so a deployment can be verified with GET /api/health.
+const APP_VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 const app = express();
 const httpServer = http.createServer(app);
 const io = new SocketServer(httpServer, {
@@ -104,7 +112,7 @@ app.get('/api/vapid-key', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, app: 'You and Me', online: activeUsers.size, profiles: registeredProfiles.size });
+  res.json({ ok: true, app: 'You and Me', version: APP_VERSION, online: activeUsers.size, profiles: registeredProfiles.size });
 });
 
 // Guest identities live in memory and persist across reloads
