@@ -331,6 +331,10 @@ function App() {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [modal, setModal] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
+  const [topNotification, setTopNotification] = useState(null);
+  const [floatingChatHeads, setFloatingChatHeads] = useState([]);
+  const topNotifTimerRef = useRef(null);
   const [toast, setToast] = useState('');
   const [typingPeers, setTypingPeers] = useState({});
   const [callState, setCallState] = useState(null);
@@ -478,15 +482,40 @@ function App() {
     socketRef.current?.emit('message:delivered', { id: message.id, fromId: message.fromId });
     if (isActive) socketRef.current?.emit('chat:read', { peerId: message.fromId });
     else {
+      const snippet = message.text || (message.type === 'audio' ? '🎤 Voice message' : message.type === 'image' ? '📷 Photo' : '📎 Attachment');
+      
+      // Play Messenger pop chime
+      playNotificationSound('message');
+
+      // Trigger top screen banner notification
+      triggerTopNotification({
+        id: message.id,
+        senderId: message.fromId,
+        senderName: message.senderName || 'User',
+        senderAvatar: message.senderAvatar || '',
+        text: snippet,
+      });
+
+      // Trigger Messenger-style floating circular chat head bubble
+      addFloatingChatHead({
+        senderId: message.fromId,
+        senderName: message.senderName || 'User',
+        senderAvatar: message.senderAvatar || '',
+        text: snippet,
+      });
+
+      // System notification if permission is active
       const settings = latestAppRef.current.settings;
-      if (settings.notifications && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+      if (settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
         try {
-          new Notification(message.senderName || 'You and Me', { body: message.text || message.attachment?.name || t.message });
+          new Notification(message.senderName || 'You and Me', {
+            body: snippet,
+            icon: message.senderAvatar || '/favicon.svg',
+          });
         } catch {
-          // Browser notifications are an optional enhancement.
+          // fallback
         }
       }
-      if (settings.sound) playMessageSound();
     }
   }
   receiveMessageRef.current = receiveRemoteMessage;
@@ -552,6 +581,65 @@ function App() {
     });
   }
   incomingCallRef.current = handleIncomingCall;
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      const dismissed = localStorage.getItem('ym_notif_dismissed');
+      if (Notification.permission === 'default' && !dismissed) {
+        const timer = setTimeout(() => setShowNotificationPrompt(true), 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, []);
+
+  const requestNotificationPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm === 'granted') {
+          updateSettings({ notifications: true });
+          playNotificationSound('message');
+          showToast('নোটিফিকেশন সফলভাবে চালু হয়েছে!');
+        }
+      } catch (err) {
+        console.warn('Notification permission error:', err);
+      }
+    }
+    localStorage.setItem('ym_notif_dismissed', 'true');
+    setShowNotificationPrompt(false);
+  };
+
+  const dismissNotificationPrompt = () => {
+    localStorage.setItem('ym_notif_dismissed', 'true');
+    setShowNotificationPrompt(false);
+  };
+
+  const triggerTopNotification = (data) => {
+    setTopNotification(data);
+    if (topNotifTimerRef.current) clearTimeout(topNotifTimerRef.current);
+    topNotifTimerRef.current = setTimeout(() => setTopNotification(null), 5500);
+  };
+
+  const addFloatingChatHead = (data) => {
+    setFloatingChatHeads((current) => {
+      const existing = current.find((h) => h.senderId === data.senderId);
+      if (existing) {
+        return current.map((h) => h.senderId === data.senderId ? { ...h, text: data.text, count: h.count + 1 } : h);
+      }
+      return [...current.slice(-4), { ...data, count: 1 }];
+    });
+  };
+
+  useEffect(() => {
+    if (callState?.status === 'ringing' && callState?.direction === 'incoming') {
+      playNotificationSound('call');
+      const ringInterval = setInterval(() => {
+        playNotificationSound('call');
+      }, 2500);
+      return () => clearInterval(ringInterval);
+    }
+  }, [callState?.status, callState?.direction]);
+
 
   useEffect(() => {
     const envSocketUrl = import.meta.env.VITE_SOCKET_URL;
@@ -1540,6 +1628,79 @@ function App() {
       {modal === 'new-chat' && (
         <NewChatDialog t={t} identity={app.identity} onClose={() => setModal('')} onStart={(id, name) => { setModal(''); openPeer(id, name); }} onCopy={() => copyText(app.identity.id)} />
       )}
+      {showNotificationPrompt && (
+        <div className="notif-permission-card">
+          <div className="notif-permission-icon"><Bell size={22} /></div>
+          <div className="notif-permission-content">
+            <strong>মেসেজ ও কল নোটিফিকেশন চালু করুন</strong>
+            <p>নতুন মেসেজ ও ইনকামিং কল আসলে সাউন্ড ও বাবল নোটিফিকেশন পেতে পারমিশন চালু করুন।</p>
+          </div>
+          <div className="notif-permission-buttons">
+            <button type="button" className="notif-grant-btn" onClick={requestNotificationPermission}>অনুমতি দিন (Allow)</button>
+            <button type="button" className="notif-later-btn" onClick={dismissNotificationPrompt}>পরে</button>
+          </div>
+        </div>
+      )}
+
+      {topNotification && (
+        <div className="top-banner-notification" onClick={() => {
+          openPeer(topNotification.senderId, topNotification.senderName);
+          setTopNotification(null);
+        }}>
+          <Avatar name={topNotification.senderName} id={topNotification.senderId} photo={topNotification.senderAvatar} size="md" online />
+          <div className="top-banner-body">
+            <div className="top-banner-header">
+              <strong>{topNotification.senderName}</strong>
+              <small>এখনই</small>
+            </div>
+            <p className="top-banner-text">{topNotification.text}</p>
+          </div>
+          <button type="button" className="top-banner-close-btn" onClick={(e) => { e.stopPropagation(); setTopNotification(null); }} aria-label="Dismiss">
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      {floatingChatHeads.length > 0 && (
+        <div className="messenger-chat-heads">
+          {floatingChatHeads.map((head) => (
+            <div key={head.senderId} className="messenger-head-item">
+              <div className="messenger-head-speech-bubble" onClick={() => {
+                openPeer(head.senderId, head.senderName);
+                setFloatingChatHeads((heads) => heads.filter((h) => h.senderId !== head.senderId));
+              }}>
+                <strong>{head.senderName}</strong>
+                <p>{head.text}</p>
+              </div>
+              <button
+                type="button"
+                className="messenger-head-bubble-btn"
+                onClick={() => {
+                  openPeer(head.senderId, head.senderName);
+                  setFloatingChatHeads((heads) => heads.filter((h) => h.senderId !== head.senderId));
+                }}
+                aria-label={`Open chat with ${head.senderName}`}
+              >
+                <Avatar name={head.senderName} id={head.senderId} photo={head.senderAvatar} size="lg" online />
+                {head.count > 1 && <span className="messenger-head-badge">{head.count}</span>}
+              </button>
+              <button
+                type="button"
+                className="messenger-head-remove-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFloatingChatHeads((heads) => heads.filter((h) => h.senderId !== head.senderId));
+                }}
+                title="Dismiss"
+                aria-label="Dismiss"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {modal === 'settings' && (
         <SettingsDialog
           t={t}
