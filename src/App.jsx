@@ -75,6 +75,7 @@ import {
   shareRecordingFile,
   startCallScreenRecording,
 } from './callRecorder';
+import { captureAndReplaceVideoTrack, findVideoSender } from './callScreenShare';
 
 const STORAGE_KEY = 'you-and-me.local.v1';
 const ID_PATTERN = /^YM-[A-Z0-9]{6}$/;
@@ -169,9 +170,12 @@ const words = {
     account: 'Account', privacyControls: 'Privacy', dataStorage: 'Data & Storage', callsSettings: 'Calls',
     contactsSettings: 'Contacts', security: 'Security', support: 'Help & Support', logout: 'Log out',
     showPresence: 'Show my online status', presenceHint: 'When off, you will not appear in online search.',
-    screenShare: 'Share screen', stopScreenShare: 'Stop sharing', allowScreenShare: 'Allow screen sharing?',
-    screenShareHint: 'Your browser will ask you to choose a screen or window. You can stop sharing at any time.',
-    allow: 'Allow', speaker: 'Speaker', speakerOff: 'Speaker off', keypad: 'Keypad', switchCamera: 'Switch camera',
+    screenShare: 'Share screen', stopScreenShare: 'Stop sharing',
+    screenShareUnavailable: 'Screen sharing is unavailable. Use a supported browser on a secure (HTTPS) page.',
+    screenShareNotReady: 'Screen sharing will be available once the video call is connected.',
+    screenShareBlocked: 'Screen sharing was cancelled or blocked. Choose a screen and allow it in your browser.',
+    screenShareFailed: 'Screen sharing could not start. Please try again.',
+    speaker: 'Speaker', speakerOff: 'Speaker off', keypad: 'Keypad', switchCamera: 'Switch camera',
     more: 'More', moreOptions: 'More options',
     contactsImport: 'Import contacts', manageContacts: 'Manage contacts', contactsImportHint: 'Contacts are only accessed after you choose Import.',
     contactsUnsupported: 'This browser does not support contact import. You can still add people by You and Me ID.',
@@ -433,11 +437,11 @@ function App() {
   }
 
   const [toast, setToast] = useState('');
+  const [toastAboveCall, setToastAboveCall] = useState(false);
   const [typingPeers, setTypingPeers] = useState({});
   const [callState, setCallState] = useState(null);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [screenSharePrompt, setScreenSharePrompt] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
   const [callRecording, setCallRecording] = useState(false);
   const [callRecordingSeconds, setCallRecordingSeconds] = useState(0);
@@ -486,6 +490,7 @@ function App() {
   const profileFileInputRef = useRef(null);
   const recorderRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const screenSharePendingRef = useRef(false);
   const callRecorderRef = useRef(null);
   const callRecordingTimerRef = useRef(null);
   const cameraTrackRef = useRef(null);
@@ -538,10 +543,14 @@ function App() {
     }
   }, [app]);
 
-  function showToast(message) {
+  function showToast(message, { aboveCall = false } = {}) {
     setToast(message);
+    setToastAboveCall(aboveCall);
     if (toastRef.current) clearTimeout(toastRef.current);
-    toastRef.current = setTimeout(() => setToast(''), 2600);
+    toastRef.current = setTimeout(() => {
+      setToast('');
+      setToastAboveCall(false);
+    }, 2600);
   }
 
   function playNotificationSound(kind = 'message') {
@@ -1734,7 +1743,6 @@ function App() {
     screenStreamRef.current = null;
     cameraTrackRef.current = null;
     setScreenSharing(false);
-    setScreenSharePrompt(false);
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     pendingOfferRef.current = null;
@@ -1849,38 +1857,68 @@ function App() {
     }
   }
 
-  function requestScreenShare() {
-    if (callRef.current?.kind !== 'video') return;
-    setScreenSharePrompt(true);
+  function screenShareErrorMessage(error) {
+    if (error?.code === 'unsupported') {
+      return language === 'bn'
+        ? 'এই ব্রাউজারে স্ক্রিন শেয়ার সমর্থিত নয়। HTTPS-এ সমর্থিত ব্রাউজারে চেষ্টা করুন।'
+        : t.screenShareUnavailable;
+    }
+    if (error?.code === 'missing-video-sender' || error?.code === 'missing-video-track') {
+      return language === 'bn'
+        ? 'ভিডিও কল প্রস্তুত হলে আবার স্ক্রিন শেয়ার চেষ্টা করুন।'
+        : t.screenShareNotReady;
+    }
+    if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') {
+      return language === 'bn'
+        ? 'স্ক্রিন শেয়ার বাতিল বা ব্লক হয়েছে। ব্রাউজারের উইন্ডোতে স্ক্রিন বেছে নিয়ে Share/Allow চাপুন।'
+        : t.screenShareBlocked;
+    }
+    return language === 'bn' ? 'স্ক্রিন শেয়ার চালু করা যায়নি। আবার চেষ্টা করুন।' : t.screenShareFailed;
   }
 
-  async function allowScreenShare() {
-    setScreenSharePrompt(false);
-    if (!navigator.mediaDevices?.getDisplayMedia || !peerConnectionRef.current) {
-      showToast('Screen sharing is not supported in this browser.');
+  async function requestScreenShare() {
+    const call = callRef.current;
+    if (call?.kind !== 'video' || screenSharePendingRef.current || screenStreamRef.current) return;
+
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      showToast(screenShareErrorMessage({ code: 'unsupported' }), { aboveCall: true });
       return;
     }
+    const peerConnection = peerConnectionRef.current;
+    if (!peerConnection) {
+      showToast(screenShareErrorMessage({ code: 'missing-video-sender' }), { aboveCall: true });
+      return;
+    }
+
+    screenSharePendingRef.current = true;
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      const track = stream.getVideoTracks()[0];
-      const sender = peerConnectionRef.current.getSenders().find((item) => item.track?.kind === 'video');
-      if (!track || !sender) {
-        stream.getTracks().forEach((item) => item.stop());
-        showToast('Start a video call before sharing your screen.');
+      // Open the browser's native screen picker directly from the menu click.
+      // There is no extra app-level Allow dialog that can consume the gesture.
+      const result = await captureAndReplaceVideoTrack({
+        mediaDevices: navigator.mediaDevices,
+        peerConnection,
+        isCallCurrent: () => callRef.current?.callId === call.callId && peerConnectionRef.current === peerConnection,
+      });
+      if (!result) return;
+
+      const { stream, track } = result;
+      screenStreamRef.current = stream;
+      track.onended = () => { void stopScreenShare(); };
+      if (track.readyState !== 'live') {
+        await stopScreenShare();
         return;
       }
-      screenStreamRef.current = stream;
-      await sender.replaceTrack(track);
-      track.onended = () => stopScreenShare();
       setScreenSharing(true);
-      setCurrentCall((current) => current ? { ...current, screenSharing: true } : current);
-    } catch {
-      // The browser owns the prompt; cancelling it leaves the call untouched.
+      setCurrentCall((current) => current?.callId === call.callId ? { ...current, screenSharing: true } : current);
+    } catch (error) {
+      showToast(screenShareErrorMessage(error), { aboveCall: true });
+    } finally {
+      screenSharePendingRef.current = false;
     }
   }
 
   async function stopScreenShare() {
-    const sender = peerConnectionRef.current?.getSenders().find((item) => item.track?.kind === 'video');
+    const sender = findVideoSender(peerConnectionRef.current);
     const cameraTrack = cameraTrackRef.current;
     if (sender && cameraTrack?.readyState === 'live') {
       try { await sender.replaceTrack(cameraTrack); } catch { /* The call may have ended. */ }
@@ -2434,7 +2472,6 @@ function App() {
           screenRecordingSeconds={callRecordingSeconds}
         />
       )}
-      {screenSharePrompt && <ScreenSharePrompt t={t} onCancel={() => setScreenSharePrompt(false)} onAllow={allowScreenShare} />}
       {modal === 'recordings' && (
         <RecordingsDialog
           t={t}
@@ -2460,7 +2497,7 @@ function App() {
           onClose={() => setSavedRecording(null)}
         />
       )}
-      {toast && <div className="toast-message" role="status">{toast}</div>}
+      {toast && <div className={`toast-message${toastAboveCall ? ' toast-message-above-call' : ''}`} role="status">{toast}</div>}
     </div>
   );
 }
@@ -3333,10 +3370,17 @@ function CallMoreOptions({ t, screenSharing, screenRecording, onScreenShare, onR
     };
   }, [open]);
 
-  function runAction(action) {
+  function runAction(action, invokeBeforeClosing = false) {
+    if (invokeBeforeClosing) {
+      // Gesture-gated browser APIs (getDisplayMedia) must start before the menu
+      // changes focus or closes, while this click still has user activation.
+      const result = action();
+      setOpen(false);
+      triggerRef.current?.focus();
+      return result;
+    }
     setOpen(false);
     triggerRef.current?.focus();
-    // Keep the existing handler in the click event's browser user activation.
     action();
   }
 
@@ -3384,7 +3428,7 @@ function CallMoreOptions({ t, screenSharing, screenRecording, onScreenShare, onR
             role="menuitem"
             tabIndex={-1}
             className={`call-menu-item ${screenSharing ? 'call-menu-item-active' : ''}`}
-            onClick={() => runAction(onScreenShare)}
+            onClick={() => runAction(onScreenShare, true)}
             title={screenSharing ? t.stopScreenShare : t.screenShare}
           >
             {screenSharing ? <MonitorX size={18} /> : <MonitorUp size={18} />}
@@ -3499,20 +3543,6 @@ export function CallOverlay({
             </>
           )}
         </footer>
-      </section>
-    </div>
-  );
-}
-
-function ScreenSharePrompt({ t, onCancel, onAllow }) {
-  return (
-    <div className="share-screen-prompt" role="dialog" aria-modal="true" aria-labelledby="screen-share-title">
-      <section className="share-prompt-card">
-        <div className="share-prompt-icon"><MonitorUp size={23} /></div>
-        <span className="eyebrow">You and Me</span>
-        <h2 id="screen-share-title">{t.allowScreenShare}</h2>
-        <p>{t.screenShareHint}</p>
-        <div className="share-prompt-actions"><button className="secondary-button" onClick={onCancel}>{t.cancel}</button><button className="primary-button" onClick={onAllow}><MonitorUp size={15} />{t.allow}</button></div>
       </section>
     </div>
   );
