@@ -12,6 +12,7 @@ const { CallOverlay, RecordingsDialog, RecordingSavedCard, CallsWorkspace } = mo
 const t = new Proxy({}, { get: (_target, key) => String(key) });
 const noop = () => {};
 const controlsMarkup = (markup) => markup.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/)?.[0] || '';
+const headerMarkup = (markup) => markup.match(/<header\b[^>]*>[\s\S]*?<\/header>/)?.[0] || '';
 const controlLabels = (markup) => [...controlsMarkup(markup).matchAll(/<span>([^<]*)<\/span><\/button>/g)].map((match) => match[1]);
 
 const baseCall = {
@@ -32,11 +33,14 @@ assert.match(html, /call-recording-badge/, 'REC badge should render while record
 assert.match(html, /01:15/, 'badge should show the recording clock');
 assert.match(html, /stopRecording/, 'recording badge should retain its stop hint');
 assert.match(controlsMarkup(html), /video-call-controls/, 'video controls should use the compact layout');
-assert.match(controlsMarkup(html), /aria-haspopup="menu"/, 'More should announce its popup');
-assert.match(controlsMarkup(html), /aria-expanded="false"/, 'More should start collapsed');
-assert.deepEqual(controlLabels(html), ['mute', 'cameraOff', 'more', 'switchCamera', 'endCall'], 'video controls should keep their requested order');
-assert.equal((controlsMarkup(html).match(/<button\b/g) || []).length, 5, 'only four primary controls and End call should render');
-assert.doesNotMatch(controlsMarkup(html), /call-more-menu|record-control|screenShare|recordScreen|stopRecording/, 'share and recording actions must stay hidden even while recording');
+assert.match(headerMarkup(html), /call-more-trigger/, 'More should move to the call header');
+assert.match(headerMarkup(html), /aria-haspopup="menu"/, 'More should announce its popup');
+assert.match(headerMarkup(html), /aria-expanded="false"/, 'More should start collapsed');
+assert.doesNotMatch(controlsMarkup(html), /call-more/, 'More must not render in the bottom controls');
+assert.deepEqual(controlLabels(html), ['mute', 'cameraOff', 'switchCamera', 'endCall'], 'video controls should keep their requested order');
+assert.equal((controlsMarkup(html).match(/<button\b/g) || []).length, 4, 'only the three primary controls and End call should render');
+assert.doesNotMatch(headerMarkup(html), /call-more-menu|screenShare|recordScreen|stopRecording/, 'share and recording actions must stay hidden even while recording');
+assert.doesNotMatch(controlsMarkup(html), /call-more-menu|record-control|screenShare|recordScreen|stopRecording/, 'share and recording actions must stay out of the bottom controls');
 
 // Share/record actions also stay hidden before opening More in other outgoing states.
 for (const status of ['ringing', 'connecting', 'active']) {
@@ -46,8 +50,9 @@ for (const status of ['ringing', 'connecting', 'active']) {
     onKeypad: noop, onDigit: noop, onScreenShare: noop, onSwitchCamera: noop,
     onRecordScreen: noop, screenRecording: false, screenRecordingSeconds: 0,
   }));
-  assert.deepEqual(controlLabels(html), ['unmute', 'cameraOn', 'more', 'switchCamera', 'endCall'], `${status}: primary toggle labels should remain intact`);
-  assert.doesNotMatch(controlsMarkup(html), /call-more-menu|screenShare|recordScreen|stopScreenShare/, `${status}: menu actions should not render until opened`);
+  assert.deepEqual(controlLabels(html), ['unmute', 'cameraOn', 'switchCamera', 'endCall'], `${status}: primary toggle labels should remain intact`);
+  assert.doesNotMatch(headerMarkup(html), /call-more-menu|screenShare|recordScreen|stopScreenShare/, `${status}: menu actions should not render until opened`);
+  assert.doesNotMatch(controlsMarkup(html), /call-more/, `${status}: More must stay out of the bottom controls`);
   assert.match(html, /screen-sharing-indicator/, 'existing sharing status should remain visible');
   assert.doesNotMatch(html, /call-recording-badge/, 'recording badge should stay hidden when not recording');
 }
