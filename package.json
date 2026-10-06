@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node server.js",
     "build": "vite build",
-    "start": "NODE_ENV=production node server.js"
+    "start": "NODE_ENV=production node server.js",
+    "test": "node scripts/call-recorder.test.mjs && node scripts/call-ui.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.4.1",
