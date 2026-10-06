@@ -76,7 +76,7 @@ import {
   shareRecordingFile,
   startCallScreenRecording,
 } from './callRecorder';
-import { captureAndReplaceVideoTrack, findVideoSender } from './callScreenShare';
+import { captureAndPublishVideoTrack, captureAndReplaceVideoTrack, findVideoSender, unpublishVideoTrack } from './callScreenShare';
 
 const STORAGE_KEY = 'you-and-me.local.v1';
 const ID_PATTERN = /^YM-[A-Z0-9]{6}$/;
@@ -173,7 +173,7 @@ const words = {
     showPresence: 'Show my online status', presenceHint: 'When off, you will not appear in online search.',
     screenShare: 'Share screen', stopScreenShare: 'Stop sharing',
     screenShareUnavailable: 'Screen sharing is unavailable. Use a supported browser on a secure (HTTPS) page.',
-    screenShareNotReady: 'Screen sharing will be available once the video call is connected.',
+    screenShareNotReady: 'Screen sharing will be available once the call is connected.',
     screenShareBlocked: 'Screen sharing was cancelled or blocked. Choose a screen and allow it in your browser.',
     screenShareFailed: 'Screen sharing could not start. Please try again.',
     speaker: 'Speaker', speakerOff: 'Speaker off', keypad: 'Keypad', switchCamera: 'Switch camera',
@@ -531,6 +531,7 @@ function App() {
   const recorderRef = useRef(null);
   const screenStreamRef = useRef(null);
   const screenSharePendingRef = useRef(false);
+  const screenShareSenderRef = useRef(null);
   const callRecorderRef = useRef(null);
   const callRecordingTimerRef = useRef(null);
   const cameraTrackRef = useRef(null);
@@ -825,16 +826,28 @@ function App() {
     try {
       if (signal.type === 'offer') {
         pendingOfferRef.current = signal.sdp;
-        if (!pc || currentCall.direction !== 'incoming') return;
+        if (!pc) return;
+        // An offer on an already connected call is a renegotiation: the other
+        // person started sharing their screen on an audio call, which has no
+        // video track until they add one.
+        if (!pc.remoteDescription && currentCall.direction !== 'incoming') return;
         await applyIncomingOffer(payload.callId, signal.sdp);
       } else if (signal.type === 'answer') {
         if (!pc) {
           pendingAnswerRef.current = signal.sdp;
           return;
         }
-        if (!pc.remoteDescription) {
+        if (pc.signalingState === 'have-local-offer' || !pc.remoteDescription) {
+          pendingAnswerRef.current = null;
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
           await flushRemoteIce(pc);
+        }
+      } else if (signal.type === 'screen') {
+        // The picture itself arrives as a media track; this only clears it again
+        // when the other person stops sharing, because a track that is taken off
+        // a renegotiated call does not always report 'ended'.
+        if (signal.active === false) {
+          setCurrentCall((current) => current?.callId === payload.callId && current.remoteVideo ? { ...current, remoteVideo: false } : current);
         }
       } else if (signal.type === 'ice' && signal.candidate) {
         if (pc?.remoteDescription) {
@@ -887,6 +900,9 @@ function App() {
       speakerOn: true,
       keypadOpen: false,
       screenSharing: false,
+      // Audio calls carry a screen only after someone shares one mid-call.
+      screenStream: null,
+      remoteVideo: false,
       cameraFacing: 'user',
     });
 
@@ -1599,9 +1615,30 @@ function App() {
       });
     };
     pc.ontrack = (event) => {
-      const remoteStream = event.streams?.[0];
+      const incoming = event.streams?.[0] || null;
+      const track = event.track;
+      const current = callRef.current;
+      // A screen added mid-call (audio call) can arrive grouped in a fresh
+      // MediaStream on some browsers. Fold the track into the stream the call
+      // already plays, so the other person's voice is never swapped out for a
+      // video-only stream.
+      let remoteStream = incoming;
+      if (incoming && track && current?.callId === callId && current.remoteStream && current.remoteStream !== incoming
+        && !current.remoteStream.getTracks().some((item) => item.id === track.id)) {
+        try { current.remoteStream.addTrack(track); } catch { /* The browser already grouped them. */ }
+        remoteStream = current.remoteStream;
+      }
       if (remoteStream) {
-        setCurrentCall((current) => current?.callId === callId ? { ...current, remoteStream, status: 'active' } : current);
+        setCurrentCall((currentCall) => currentCall?.callId === callId
+          ? { ...currentCall, remoteStream, remoteVideo: track?.kind === 'video' ? true : Boolean(currentCall.remoteVideo), status: 'active' }
+          : currentCall);
+      }
+      if (track?.kind === 'video') {
+        // A screen that was added mid-call (audio call) can be taken away again;
+        // drop the picture as soon as the browser reports the track is gone.
+        track.onended = () => {
+          setCurrentCall((current) => current?.callId === callId && current.remoteVideo ? { ...current, remoteVideo: false } : current);
+        };
       }
     };
     pc.onconnectionstatechange = () => {
@@ -1628,13 +1665,19 @@ function App() {
   async function applyIncomingOffer(callId, sdp) {
     const call = callRef.current;
     const pc = peerConnectionRef.current;
-    if (!call || call.callId !== callId || call.direction !== 'incoming' || !pc || offerInFlightRef.current) return;
+    if (!call || call.callId !== callId || !pc || offerInFlightRef.current) return;
+    // A mid-call offer is a renegotiation (the other person added their shared
+    // screen to an audio call) and can arrive on either side of the call. The
+    // very first offer still belongs to the person who was called.
+    const renegotiation = Boolean(pc.remoteDescription);
+    if (!renegotiation && call.direction !== 'incoming') return;
     offerInFlightRef.current = true;
     try {
-      if (!pc.remoteDescription) {
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-        await flushRemoteIce(pc);
-      }
+      // Glare: both sides offered at once. Keep our own offer in flight and let
+      // the peer answer it; their offer can be retried from the menu.
+      if (renegotiation && pc.signalingState !== 'stable') return;
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      await flushRemoteIce(pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socketRef.current?.emit('call:signal', {
@@ -1642,12 +1685,42 @@ function App() {
         toId: call.peerId,
         signal: { type: 'answer', sdp: pc.localDescription },
       });
-      setCurrentCall((current) => current?.callId === callId ? { ...current, status: 'connecting' } : current);
+      if (!renegotiation) setCurrentCall((current) => current?.callId === callId ? { ...current, status: 'connecting' } : current);
     } catch {
-      closeCall('failed', true);
+      if (renegotiation) showToast(screenShareErrorMessage(new Error('renegotiation failed')), { aboveCall: true });
+      else closeCall('failed', true);
     } finally {
       offerInFlightRef.current = false;
     }
+  }
+
+  // Send a fresh offer for a call that is already connected. Used when an audio
+  // call gains (or loses) the video track that carries a shared screen.
+  async function renegotiateCall(call, pc) {
+    if (!call || !pc || pc.connectionState === 'closed') {
+      const error = new Error('The call is not ready for screen sharing yet.');
+      error.code = 'missing-video-sender';
+      throw error;
+    }
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if (callRef.current?.callId !== call.callId || peerConnectionRef.current !== pc) return;
+    socketRef.current?.emit('call:signal', {
+      callId: call.callId,
+      toId: call.peerId,
+      signal: { type: 'offer', sdp: pc.localDescription },
+    });
+  }
+
+  // Tell the other person the shared screen is gone. Starting a share needs no
+  // message: their browser reports the new video track all by itself.
+  function notifyPeerScreenStopped(call) {
+    if (!call?.peerId || !socketRef.current) return;
+    socketRef.current.emit('call:signal', {
+      callId: call.callId,
+      toId: call.peerId,
+      signal: { type: 'screen', active: false },
+    });
   }
 
   async function startCall(kind, target = selectedChat) {
@@ -1691,6 +1764,9 @@ function App() {
       speakerOn: true,
       keypadOpen: false,
       screenSharing: false,
+      // Audio calls carry a screen only after someone shares one mid-call.
+      screenStream: null,
+      remoteVideo: false,
       cameraFacing: 'user',
     });
 
@@ -1788,6 +1864,7 @@ function App() {
     peerConnectionRef.current = null;
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current = null;
+    screenShareSenderRef.current = null;
     cameraTrackRef.current = null;
     setScreenSharing(false);
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1912,7 +1989,7 @@ function App() {
     }
     if (error?.code === 'missing-video-sender' || error?.code === 'missing-video-track') {
       return language === 'bn'
-        ? 'ভিডিও কল প্রস্তুত হলে আবার স্ক্রিন শেয়ার চেষ্টা করুন।'
+        ? 'কল সংযুক্ত হলে আবার স্ক্রিন শেয়ার চেষ্টা করুন।'
         : t.screenShareNotReady;
     }
     if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') {
@@ -1925,7 +2002,7 @@ function App() {
 
   async function requestScreenShare() {
     const call = callRef.current;
-    if (call?.kind !== 'video' || screenSharePendingRef.current || screenStreamRef.current) return;
+    if (!call || screenSharePendingRef.current || screenStreamRef.current) return;
 
     if (!navigator.mediaDevices?.getDisplayMedia) {
       showToast(screenShareErrorMessage({ code: 'unsupported' }), { aboveCall: true });
@@ -1936,27 +2013,48 @@ function App() {
       showToast(screenShareErrorMessage({ code: 'missing-video-sender' }), { aboveCall: true });
       return;
     }
+    const isVideoCall = call.kind === 'video';
+    // An audio call has no video track yet, so it needs the call's own stream to
+    // group the new screen track with the microphone audio.
+    if (!isVideoCall && !localStreamRef.current) {
+      showToast(screenShareErrorMessage({ code: 'missing-video-sender' }), { aboveCall: true });
+      return;
+    }
 
     screenSharePendingRef.current = true;
     try {
       // Open the browser's native screen picker directly from the menu click.
       // There is no extra app-level Allow dialog that can consume the gesture.
-      const result = await captureAndReplaceVideoTrack({
-        mediaDevices: navigator.mediaDevices,
-        peerConnection,
-        isCallCurrent: () => callRef.current?.callId === call.callId && peerConnectionRef.current === peerConnection,
-      });
+      const isCallCurrent = () => callRef.current?.callId === call.callId && peerConnectionRef.current === peerConnection;
+      const result = isVideoCall
+        ? await captureAndReplaceVideoTrack({
+            mediaDevices: navigator.mediaDevices,
+            peerConnection,
+            isCallCurrent,
+          })
+        : await captureAndPublishVideoTrack({
+            mediaDevices: navigator.mediaDevices,
+            peerConnection,
+            associateStream: localStreamRef.current,
+            isCallCurrent,
+            renegotiate: () => renegotiateCall(call, peerConnection),
+          });
       if (!result) return;
 
       const { stream, track } = result;
       screenStreamRef.current = stream;
+      screenShareSenderRef.current = result.published ? result.sender : null;
       track.onended = () => { void stopScreenShare(); };
       if (track.readyState !== 'live') {
         await stopScreenShare();
         return;
       }
       setScreenSharing(true);
-      setCurrentCall((current) => current?.callId === call.callId ? { ...current, screenSharing: true } : current);
+      setCurrentCall((current) => current?.callId === call.callId
+        // Keeping the captured stream on the call lets an audio call show the
+        // picture it is sending, exactly like the video call preview tile.
+        ? { ...current, screenSharing: true, screenStream: result.published ? stream : null }
+        : current);
     } catch (error) {
       showToast(screenShareErrorMessage(error), { aboveCall: true });
     } finally {
@@ -1965,7 +2063,27 @@ function App() {
   }
 
   async function stopScreenShare() {
-    const sender = findVideoSender(peerConnectionRef.current);
+    const call = callRef.current;
+    const peerConnection = peerConnectionRef.current;
+    const publishedSender = screenShareSenderRef.current;
+    screenShareSenderRef.current = null;
+
+    // A screen that was published onto an audio call lives on its own sender, so
+    // take that sender back off and renegotiate instead of restoring a camera.
+    if (publishedSender) {
+      const removed = unpublishVideoTrack({ peerConnection, sender: publishedSender });
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = null;
+      setScreenSharing(false);
+      setCurrentCall((current) => current ? { ...current, screenSharing: false, screenStream: null } : current);
+      if (call) notifyPeerScreenStopped(call);
+      if (removed && call) {
+        try { await renegotiateCall(call, peerConnection); } catch { /* The call may have ended. */ }
+      }
+      return;
+    }
+
+    const sender = findVideoSender(peerConnection);
     const cameraTrack = cameraTrackRef.current;
     if (sender && cameraTrack?.readyState === 'live') {
       try { await sender.replaceTrack(cameraTrack); } catch { /* The call may have ended. */ }
@@ -1984,10 +2102,18 @@ function App() {
   function callRecordingSources() {
     const call = callRef.current;
     const liveVideo = (stream) => Boolean(stream) && stream.getVideoTracks().some((track) => track.readyState === 'live');
-    const remote = liveVideo(call?.remoteStream) ? call.remoteStream : null;
-    const local = liveVideo(call?.localStream) ? call.localStream : null;
+    const liveAudio = (stream) => Boolean(stream) && stream.getAudioTracks().some((track) => track.readyState === 'live');
+    const remoteStream = call?.remoteStream || null;
+    const localStream = call?.localStream || null;
+    // On an audio call a picture only exists while a screen is being shared, so
+    // the recording follows the same flag the call UI does.
+    const remoteVisible = liveVideo(remoteStream) && (call?.kind === 'video' || call?.remoteVideo);
+    const remote = remoteVisible ? remoteStream : null;
+    const local = liveVideo(localStream) ? localStream : null;
     const screen = liveVideo(screenStreamRef.current) ? screenStreamRef.current : null;
-    const audio = [remote, local, screen].filter((stream) => Boolean(stream) && stream.getAudioTracks().some((track) => track.readyState === 'live'));
+    // Both voices are recorded even when nobody has a picture: an audio call has
+    // no video track at all, and a shared screen arrives without its own audio.
+    const audio = [remoteStream, localStream, screen].filter(liveAudio);
     const cameraOff = Boolean(local) && !local.getVideoTracks()[0]?.enabled;
     const remoteOff = Boolean(remote) && remote.getVideoTracks().every((track) => !track.enabled);
 
@@ -3681,13 +3807,27 @@ export function CallOverlay({
   const remoteAudioRef = useRef(null);
   const [duration, setDuration] = useState(0);
   const isIncoming = call.direction === 'incoming' && call.status === 'ringing';
+  const isVideoCall = call.kind === 'video';
   const statusText = call.status === 'active' ? formatDuration(duration) : call.status === 'ringing' ? (isIncoming ? t.incomingCall : (call.isOffline ? (language === 'bn' ? 'কল যাচ্ছে… (অফলাইন পুশ পাঠানো হয়েছে)' : 'Calling (offline alert sent)…') : t.ringing)) : t.connectingCall;
+  // A video call always shows the other person's picture. An audio call only has
+  // a picture while a screen is being shared — theirs, or your own preview.
+  const remoteVideoReady = isVideoCall ? Boolean(call.remoteStream) : Boolean(call.remoteVideo && call.remoteStream);
+  const selfScreenStream = !isVideoCall && call.screenSharing ? (call.screenStream || null) : null;
+  const stageStream = remoteVideoReady ? call.remoteStream : selfScreenStream;
+  const stageIsSelf = !remoteVideoReady && Boolean(selfScreenStream);
+  const wideStage = isVideoCall || Boolean(stageStream);
+  const peerSharingText = language === 'bn' ? `${call.peerName} স্ক্রিন শেয়ার করছেন` : `${call.peerName} is sharing their screen`;
   useEffect(() => {
-    if (remoteVideoRef.current && call.remoteStream) remoteVideoRef.current.srcObject = call.remoteStream;
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stageStream || null;
+      // An audio call already plays the voice through its <audio> element, and
+      // your own shared screen must never be echoed back at you.
+      remoteVideoRef.current.muted = !isVideoCall || stageIsSelf;
+    }
     if (remoteAudioRef.current && call.remoteStream) remoteAudioRef.current.srcObject = call.remoteStream;
     if (remoteAudioRef.current) remoteAudioRef.current.volume = call.speakerOn ? 1 : 0;
     if (localVideoRef.current && call.localStream) localVideoRef.current.srcObject = call.localStream;
-  }, [call.remoteStream, call.localStream, call.kind, call.speakerOn]);
+  }, [stageStream, stageIsSelf, isVideoCall, call.remoteStream, call.localStream, call.kind, call.speakerOn, call.remoteVideo]);
   useEffect(() => {
     const start = call.startedAt || Date.now();
     const tick = () => setDuration(Math.floor((Date.now() - start) / 1000));
@@ -3696,20 +3836,11 @@ export function CallOverlay({
     return () => clearInterval(timer);
   }, [call.startedAt]);
   const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
-  const showMoreMenu = call.kind === 'video' && !isIncoming;
-  const recordButton = (
-    <button
-      className={`call-control utility-control record-control ${screenRecording ? 'record-control-active' : ''}`}
-      onClick={onRecordScreen}
-      title={screenRecording ? t.stopRecording : `${t.recordScreen} — ${t.recordingHint}`}
-      aria-pressed={Boolean(screenRecording)}
-    >
-      <span className="control-round">{screenRecording ? <Square size={16} /> : <Film size={18} />}</span>
-      <span>{screenRecording ? t.stopRecording : t.recordScreen}</span>
-    </button>
-  );
+  // Audio and video calls share the same header menu: Share screen and Record
+  // screen live there instead of crowding the bottom row.
+  const showMoreMenu = !isIncoming;
   return (
-    <div className={`call-overlay ${call.kind === 'video' ? 'video-call-overlay' : ''}`} role="dialog" aria-modal="true" aria-label={`${call.direction === 'incoming' ? t.incomingCall : t.outgoingCall}: ${call.peerName}`}>
+    <div className={`call-overlay ${wideStage ? 'video-call-overlay' : ''}`} role="dialog" aria-modal="true" aria-label={`${call.direction === 'incoming' ? t.incomingCall : t.outgoingCall}: ${call.peerName}`}>
       <section className="call-window">
         <header className="call-window-header">
           <div className="call-header-left">
@@ -3726,11 +3857,12 @@ export function CallOverlay({
           </div>
           <span className={`call-live-pill ${call.status === 'active' ? 'live' : ''}`}><i />{statusText}</span>
         </header>
-        <div className={`call-stage ${call.kind === 'video' ? 'video-stage' : ''} ${call.keypadOpen ? 'has-keypad' : ''}`}>
-          {call.kind === 'video' && call.remoteStream ? <video ref={remoteVideoRef} className="remote-video" autoPlay playsInline /> : <div className="call-portrait"><span className="call-pulse pulse-a" /><span className="call-pulse pulse-b" /><Avatar name={call.peerName} id={call.peerId} photo={call.peerAvatar} size="call" /><span className="call-spark">✦</span></div>}
+        <div className={`call-stage ${wideStage ? 'video-stage' : ''} ${call.keypadOpen ? 'has-keypad' : ''}`}>
+          {stageStream ? <video ref={remoteVideoRef} className={`remote-video${wideStage && !isVideoCall ? ' remote-video-screen' : ''}`} autoPlay playsInline muted={!isVideoCall || stageIsSelf} /> : <div className="call-portrait"><span className="call-pulse pulse-a" /><span className="call-pulse pulse-b" /><Avatar name={call.peerName} id={call.peerId} photo={call.peerAvatar} size="call" /><span className="call-spark">✦</span></div>}
           {call.kind === 'audio' && <audio ref={remoteAudioRef} autoPlay />}
-          {call.kind === 'video' && call.localStream && <div className="local-video-tile"><video ref={localVideoRef} autoPlay playsInline muted />{call.videoOff && <span><VideoOff size={15} /></span>}</div>}
+          {isVideoCall && call.localStream && <div className="local-video-tile"><video ref={localVideoRef} autoPlay playsInline muted />{call.videoOff && <span><VideoOff size={15} /></span>}</div>}
           {call.screenSharing && <div className="screen-sharing-indicator"><MonitorUp size={14} />{t.sharingNow}</div>}
+          {!call.screenSharing && remoteVideoReady && !isVideoCall && <div className="screen-sharing-indicator"><MonitorUp size={14} />{peerSharingText}</div>}
           {screenRecording && (
             <div className="call-recording-badge" role="status" aria-live="polite">
               <span className="rec-live-dot" />
@@ -3739,10 +3871,10 @@ export function CallOverlay({
               <small>{t.stopRecording}</small>
             </div>
           )}
-          <div className="call-stage-person"><strong>{call.peerName}</strong><small>{call.kind === 'video' ? t.videoCall : t.audioCall}</small></div>
+          <div className="call-stage-person"><strong>{call.peerName}</strong><small>{isVideoCall ? t.videoCall : t.audioCall}</small></div>
           {call.keypadOpen && call.kind === 'audio' && <div className="call-keypad">{digits.map((digit) => <button key={digit} onClick={() => onDigit(digit)}>{digit}</button>)}<button className="keypad-close" onClick={onKeypad}>Close</button></div>}
         </div>
-        <footer className={`call-controls${call.kind === 'video' && !isIncoming ? ' video-call-controls' : ''}`}>
+        <footer className={`call-controls${wideStage && !isIncoming ? ' video-call-controls' : ''}`}>
           {isIncoming ? (
             <>
               <button className="call-control decline-control" onClick={onDecline}><PhoneOff size={20} /><span>{t.decline}</span></button>
@@ -3754,7 +3886,6 @@ export function CallOverlay({
               {call.kind === 'audio' && <>
                 <button className={`call-control utility-control ${call.keypadOpen ? 'control-active' : ''}`} onClick={onKeypad} title={t.keypad}><span className="control-round"><Hash size={18} /></span><span>{t.keypad}</span></button>
                 <button className={`call-control utility-control ${!call.speakerOn ? 'control-active' : ''}`} onClick={onSpeaker} title={t.speaker}><span className="control-round"><Speaker size={18} /></span><span>{call.speakerOn ? t.speaker : t.speakerOff}</span></button>
-                {recordButton}
               </>}
               {call.kind === 'video' && <>
                 <button className={`call-control utility-control ${call.videoOff ? 'control-active' : ''}`} onClick={onVideo} title={call.videoOff ? t.cameraOn : t.cameraOff}><span className="control-round">{call.videoOff ? <VideoOff size={18} /> : <Video size={18} />}</span><span>{call.videoOff ? t.cameraOn : t.cameraOff}</span></button>

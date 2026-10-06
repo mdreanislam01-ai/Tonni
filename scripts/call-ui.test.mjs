@@ -57,17 +57,55 @@ for (const status of ['ringing', 'connecting', 'active']) {
   assert.doesNotMatch(html, /call-recording-badge/, 'recording badge should stay hidden when not recording');
 }
 
-// 2. Audio call gets the record control too.
+// 2. Audio call gets the very same header menu as a video call.
 html = renderToStaticMarkup(React.createElement(CallOverlay, {
   call: { ...baseCall, kind: 'audio', screenRecording: false }, t, language: 'en',
   onAccept: noop, onDecline: noop, onEnd: noop, onMute: noop, onVideo: noop, onSpeaker: noop,
   onKeypad: noop, onDigit: noop, onScreenShare: noop, onSwitchCamera: noop,
   onRecordScreen: noop, screenRecording: false, screenRecordingSeconds: 0,
 }));
-assert.match(html, /record-control/, 'audio calls should expose recording');
+assert.match(headerMarkup(html), /call-more-trigger/, 'audio calls should expose the More menu in the header');
+assert.match(headerMarkup(html), /aria-haspopup="menu"/, 'audio More should announce its popup');
+assert.match(headerMarkup(html), /aria-expanded="false"/, 'audio More should start collapsed');
+assert.doesNotMatch(html, /record-control/, 'recording belongs to the menu, not the bottom row');
+assert.doesNotMatch(controlsMarkup(html), /call-more/, 'More must not render in the bottom controls');
+assert.deepEqual(controlLabels(html), ['mute', 'keypad', 'speaker', 'endCall'], 'audio calls keep mute, keypad, speaker and end call');
 assert.doesNotMatch(html, /call-recording-badge/, 'no badge when not recording');
-assert.doesNotMatch(html, /call-more-options|video-call-controls/, 'audio call controls must not change');
-assert.deepEqual(controlLabels(html), ['mute', 'keypad', 'speaker', 'recordScreen', 'endCall'], 'audio calls should retain all existing controls');
+assert.doesNotMatch(headerMarkup(html), /call-more-menu|screenShare|recordScreen|stopRecording/, 'audio menu actions stay hidden until opened');
+assert.doesNotMatch(html, /video-call-overlay/, 'a plain audio call keeps its compact window');
+
+// 2b. Recording an audio call still shows the live badge.
+html = renderToStaticMarkup(React.createElement(CallOverlay, {
+  call: { ...baseCall, kind: 'audio', screenRecording: true }, t, language: 'en',
+  onAccept: noop, onDecline: noop, onEnd: noop, onMute: noop, onVideo: noop, onSpeaker: noop,
+  onKeypad: noop, onDigit: noop, onScreenShare: noop, onSwitchCamera: noop,
+  onRecordScreen: noop, screenRecording: true, screenRecordingSeconds: 45,
+}));
+assert.match(html, /call-recording-badge/, 'audio recording should show the badge');
+assert.match(html, /00:45/, 'audio recording badge should show the clock');
+
+// 2c. A screen shared on an audio call fills the stage for both sides.
+const fakeStream = { getVideoTracks: () => [], getAudioTracks: () => [] };
+html = renderToStaticMarkup(React.createElement(CallOverlay, {
+  call: { ...baseCall, kind: 'audio', remoteVideo: true, remoteStream: fakeStream }, t, language: 'en',
+  onAccept: noop, onDecline: noop, onEnd: noop, onMute: noop, onVideo: noop, onSpeaker: noop,
+  onKeypad: noop, onDigit: noop, onScreenShare: noop, onSwitchCamera: noop,
+  onRecordScreen: noop, screenRecording: false, screenRecordingSeconds: 0,
+}));
+assert.match(html, /remote-video-screen/, 'the peer screen should fill the audio call stage');
+assert.match(html, /is sharing their screen/, 'the audio call should name who is sharing');
+assert.match(html, /video-call-overlay/, 'the window should widen for the shared screen');
+assert.doesNotMatch(html, /call-portrait/, 'the avatar should step aside for the picture');
+
+html = renderToStaticMarkup(React.createElement(CallOverlay, {
+  call: { ...baseCall, kind: 'audio', screenSharing: true, screenStream: fakeStream }, t, language: 'en',
+  onAccept: noop, onDecline: noop, onEnd: noop, onMute: noop, onVideo: noop, onSpeaker: noop,
+  onKeypad: noop, onDigit: noop, onScreenShare: noop, onSwitchCamera: noop,
+  onRecordScreen: noop, screenRecording: false, screenRecordingSeconds: 0,
+}));
+assert.match(html, /remote-video-screen/, 'your own shared screen should preview on the stage');
+assert.match(html, /screen-sharing-indicator/, 'the sharing indicator should stay visible');
+assert.match(html, /sharingNow/, 'the indicator should say you are sharing');
 
 // 3. Ringing call shows answer/decline only.
 html = renderToStaticMarkup(React.createElement(CallOverlay, {

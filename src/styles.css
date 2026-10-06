@@ -532,6 +532,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .local-video-tile > span { position: absolute; inset: 0; display: grid; place-items: center; color: white; background: #30463e; }
 .video-stage { min-height: 410px; background: #14221f; }
 .remote-video { position: absolute; inset: 0; }
+/* A shared screen on an audio call is read, not admired: fit the whole picture
+   inside the stage instead of cropping it like a camera feed. */
+.remote-video-screen { object-fit: contain; background: #050d1a; }
 .video-stage .call-stage-person { z-index: 3; position: absolute; left: 18px; bottom: 18px; align-items: flex-start; padding: 8px 12px; border-radius: 10px; background: rgba(14, 25, 22, .56); backdrop-filter: blur(8px); }
 
 .toast-message { z-index: 50; position: fixed; left: 50%; bottom: 25px; max-width: calc(100vw - 28px); padding: 11px 16px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; color: white; background: #253d35; box-shadow: 0 12px 30px rgba(15, 37, 28, .22); font-size: 11px; text-align: center; transform: translateX(-50%); animation: toast-in .2s ease-out; }.toast-message-above-call { z-index: 10004; }
