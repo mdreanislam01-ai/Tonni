@@ -1875,6 +1875,7 @@ function App() {
         <CallOverlay
           call={callState}
           t={t}
+          language={language}
           onAccept={acceptCall}
           onDecline={declineCall}
           onEnd={() => closeCall('ended', true)}
@@ -2402,18 +2403,18 @@ function MessageBubble({ message, own, t, language, onCallPeer }) {
               {message.kind === 'video' ? <VideoOff size={18} /> : <PhoneOff size={18} />}
             </div>
             <div className="missed-call-details">
-              <strong>{message.kind === 'video' ? 'Missed Video Call' : 'Missed Audio Call'}</strong>
-              <small>{own ? 'Outgoing · No answer' : 'Incoming · Tap to call back'}</small>
+              <strong>{language === 'bn' ? (message.kind === 'video' ? 'মিসড ভিডিও কল' : 'মিসড অডিও কল') : (message.kind === 'video' ? 'Missed Video Call' : 'Missed Audio Call')}</strong>
+              <small>{own ? (language === 'bn' ? 'আউটগোয়িং · উত্তর দেননি' : 'Outgoing · No answer') : (language === 'bn' ? 'ইনকামিং · কল করতে ট্যাপ করুন' : 'Incoming · Tap to call back')}</small>
             </div>
             {!own && onCallPeer && (
               <button
                 type="button"
                 className="missed-call-back-btn"
                 onClick={() => onCallPeer(message.kind || 'audio')}
-                title="Call back"
+                title={language === 'bn' ? 'কল ব্যাক করুন' : 'Call back'}
               >
                 {message.kind === 'video' ? <Video size={13} /> : <Phone size={13} />}
-                <span>Call back</span>
+                <span>{language === 'bn' ? 'কল ব্যাক' : 'Call back'}</span>
               </button>
             )}
           </div>
@@ -2693,7 +2694,7 @@ function SettingsDialog({
 }
 
 function CallOverlay({
-  call, t, onAccept, onDecline, onEnd, onMute, onVideo, onSpeaker, onKeypad, onDigit,
+  call, t, language, onAccept, onDecline, onEnd, onMute, onVideo, onSpeaker, onKeypad, onDigit,
   onScreenShare, onSwitchCamera,
 }) {
   const remoteVideoRef = useRef(null);
@@ -2701,7 +2702,7 @@ function CallOverlay({
   const remoteAudioRef = useRef(null);
   const [duration, setDuration] = useState(0);
   const isIncoming = call.direction === 'incoming' && call.status === 'ringing';
-  const statusText = call.status === 'active' ? formatDuration(duration) : call.status === 'ringing' ? (isIncoming ? t.incomingCall : (call.isOffline ? 'Calling (offline alert sent)…' : t.ringing)) : t.connectingCall;
+  const statusText = call.status === 'active' ? formatDuration(duration) : call.status === 'ringing' ? (isIncoming ? t.incomingCall : (call.isOffline ? (language === 'bn' ? 'কল যাচ্ছে… (অফলাইন পুশ পাঠানো হয়েছে)' : 'Calling (offline alert sent)…') : t.ringing)) : t.connectingCall;
   useEffect(() => {
     if (remoteVideoRef.current && call.remoteStream) remoteVideoRef.current.srcObject = call.remoteStream;
     if (remoteAudioRef.current && call.remoteStream) remoteAudioRef.current.srcObject = call.remoteStream;
