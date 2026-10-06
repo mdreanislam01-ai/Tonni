@@ -6,6 +6,7 @@ import {
   Bell,
   Check,
   CheckCheck,
+  ChevronDown,
   ChevronLeft,
   Clock3,
   Copy,
@@ -287,6 +288,32 @@ function parseGuestId(value) {
   return match?.[0] ?? '';
 }
 
+function readRouteIntent() {
+  if (typeof window === 'undefined') return { quickChat: false, toId: '' };
+  const params = new URLSearchParams(window.location.search);
+  const toId = parseGuestId(params.get('to'));
+  return {
+    quickChat: params.get('quickChat') === '1' && ID_PATTERN.test(toId),
+    toId,
+  };
+}
+
+function makeQuickRouteChat(peerId) {
+  return {
+    id: peerId,
+    peerId,
+    name: `Guest ${peerId.slice(-4)}`,
+    username: '',
+    phone: '',
+    avatar: '',
+    kind: 'direct',
+    messages: [],
+    unread: 0,
+    pinned: false,
+    updatedAt: Date.now(),
+  };
+}
+
 function normaliseUsername(value) {
   return String(value ?? '').trim().replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 24);
 }
@@ -372,11 +399,20 @@ function BrandMark({ small = false }) {
 }
 
 function App() {
-  const [app, setApp] = useState(readStoredApp);
+  const [routeIntent] = useState(readRouteIntent);
+  const [app, setApp] = useState(() => {
+    const restored = readStoredApp();
+    if (!routeIntent.quickChat || !routeIntent.toId || routeIntent.toId === restored.identity.id) return restored;
+    if (restored.chats.some((chat) => chat.peerId === routeIntent.toId)) return restored;
+    return { ...restored, chats: [makeQuickRouteChat(routeIntent.toId), ...restored.chats] };
+  });
+  const initialQuickChat = routeIntent.quickChat && routeIntent.toId !== app.identity.id;
+  const [quickChatMode, setQuickChatMode] = useState(initialQuickChat);
+  const [floatingChatPeerId, setFloatingChatPeerId] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [onlineUsers, setOnlineUsers] = useState([]);
-  const [activeTab, setActiveTab] = useState('home');
-  const [selectedChatId, setSelectedChatId] = useState('saved');
+  const [activeTab, setActiveTab] = useState(initialQuickChat ? 'chats' : 'home');
+  const [selectedChatId, setSelectedChatId] = useState(initialQuickChat ? routeIntent.toId : 'saved');
   const [mobileChatOpen, setMobileChatOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [globalSearch, setGlobalSearch] = useState('');
@@ -405,8 +441,11 @@ function App() {
     }
   }, []);
 
-  async function subscribeToPush(socket = socketRef.current) {
+  async function subscribeToPush(socket = socketRef.current, force = false, settingsOverride = null) {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const settings = settingsOverride || latestAppRef.current.settings;
+    if (settings.backgroundAlerts === false || (!force && !settings.notifications)) return;
     try {
       const reg = await navigator.serviceWorker.ready;
       let sub = await reg.pushManager.getSubscription();
@@ -416,7 +455,8 @@ function App() {
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
         });
       }
-      if (sub && socket?.connected && guestRegisteredRef.current && latestAppRef.current.settings.notifications && latestAppRef.current.settings.backgroundAlerts !== false) {
+      const currentSettings = settingsOverride || latestAppRef.current.settings;
+      if (sub && socket?.connected && guestRegisteredRef.current && currentSettings.backgroundAlerts !== false && (force || currentSettings.notifications)) {
         socket.emit('push:subscribe', { subscription: sub.toJSON() });
       }
     } catch (err) {
@@ -507,6 +547,7 @@ function App() {
   const t = words[language] || words.en;
   const canShareRecordings = useMemo(() => canShareRecording(), []);
   const selectedChat = app.chats.find((chat) => chat.id === selectedChatId) ?? app.chats.find((chat) => chat.id === 'saved') ?? null;
+  const floatingChat = floatingChatPeerId ? app.chats.find((chat) => chat.peerId === floatingChatPeerId) ?? null : null;
   const selectedIsOnline = Boolean(selectedChat?.peerId && onlineUsers.some((user) => user.id === selectedChat.peerId));
   const otherOnlineUsers = onlineUsers.filter((user) => user.id !== app.identity.id);
   const directChats = app.chats.filter((chat) => chat.kind !== 'saved');
@@ -691,7 +732,10 @@ function App() {
     }
     const curChat = latestAppRef.current.chats.find((c) => c.id === selectedChatRef.current);
     const isViewingThisPeer = (selectedChatRef.current === message.fromId || curChat?.peerId === message.fromId);
-    const isActive = activeTabRef.current === 'chats' && isViewingThisPeer && document.visibilityState === 'visible';
+    const pageIsFocused = document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus());
+    const isActive = pageIsFocused && (
+      (activeTabRef.current === 'chats' && isViewingThisPeer) || floatingChatPeerId === message.fromId
+    );
     setApp((current) => {
       const existingChat = current.chats.find((chat) => chat.peerId === message.fromId);
       const newChat = existingChat ?? {
@@ -768,18 +812,6 @@ function App() {
         text: snippet,
       });
 
-      // System notification if permission is active
-      const settings = latestAppRef.current.settings;
-      if (settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
-        try {
-          new Notification(message.senderName || 'You and Me', {
-            body: snippet,
-            icon: message.senderAvatar || '/favicon.svg',
-          });
-        } catch {
-          // fallback
-        }
-      }
     }
   }
   receiveMessageRef.current = receiveRemoteMessage;
@@ -885,7 +917,6 @@ function App() {
         const perm = await Notification.requestPermission();
         if (perm === 'granted') {
           updateSettings({ notifications: true });
-          await subscribeToPush(socketRef.current);
           playNotificationSound('message');
           showToast('ব্যাকগ্রাউন্ড কল ও মেসেজ নোটিফিকেশন চালু হয়েছে!');
         }
@@ -1132,42 +1163,42 @@ function App() {
       inviteHandledRef.current = true;
       openPeer(inviteId);
     }
-    if (params.has('to') || params.has('callId') || params.has('callAction') || params.has('autoAnswer')) {
+    if (params.has('to') || params.has('callId') || params.has('callAction') || params.has('autoAnswer') || params.has('quickChat')) {
       window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
     }
   }, [app.identity.id]);
 
   useEffect(() => {
     function markAsRead() {
-      if (document.visibilityState !== 'visible' || activeTabRef.current !== 'chats') return;
+      const pageIsFocused = document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus());
+      if (!pageIsFocused) return;
       const curApp = latestAppRef.current;
       const curChat = curApp.chats.find((c) => c.id === selectedChatRef.current);
-      const peerId = curChat?.peerId || (selectedChatRef.current !== 'saved' ? selectedChatRef.current : null);
-      if (peerId && socketRef.current?.connected) {
-        socketRef.current.emit('chat:read', { peerId });
-        setApp((current) => ({
-          ...current,
-          chats: current.chats.map((chat) => (chat.id === selectedChatRef.current || chat.peerId === peerId) ? {
-            ...chat,
-            unread: 0,
-            messages: chat.messages.map((m) => m.fromId !== current.identity.id && m.status !== 'read' ? { ...m, status: 'read' } : m),
-          } : chat),
-        }));
-      }
+      const mainPeerId = activeTabRef.current === 'chats'
+        ? (curChat?.peerId || (selectedChatRef.current !== 'saved' ? selectedChatRef.current : null))
+        : null;
+      const peerId = floatingChatPeerId || mainPeerId;
+      if (!peerId) return;
+
+      socketRef.current?.emit('chat:read', { peerId });
+      setApp((current) => ({
+        ...current,
+        chats: current.chats.map((chat) => chat.peerId === peerId ? {
+          ...chat,
+          unread: 0,
+          messages: chat.messages.map((message) => message.fromId !== current.identity.id && message.status !== 'read' ? { ...message, status: 'read' } : message),
+        } : chat),
+      }));
     }
 
-    if (activeTab === 'chats' && selectedChat?.peerId) {
-      setApp((current) => ({ ...current, chats: current.chats.map((chat) => chat.id === selectedChat.id ? { ...chat, unread: 0 } : chat) }));
-      socketRef.current?.emit('chat:read', { peerId: selectedChat.peerId });
-    }
-
+    markAsRead();
     document.addEventListener('visibilitychange', markAsRead);
     window.addEventListener('focus', markAsRead);
     return () => {
       document.removeEventListener('visibilitychange', markAsRead);
       window.removeEventListener('focus', markAsRead);
     };
-  }, [selectedChatId, activeTab]);
+  }, [selectedChatId, activeTab, floatingChatPeerId]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -1196,7 +1227,7 @@ function App() {
       if (!nextSettings.notifications || nextSettings.backgroundAlerts === false) {
         unsubscribeFromPush();
       } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        subscribeToPush(socketRef.current);
+        subscribeToPush(socketRef.current, true, nextSettings);
       }
     }
   }
@@ -1255,16 +1286,18 @@ function App() {
     window.location.reload();
   }
 
-  function openPeer(peerId, suggestedName = '') {
+  function openPeer(peerId, suggestedName = '', { focus = true } = {}) {
     const id = parseGuestId(peerId);
     if (!ID_PATTERN.test(id)) {
       showToast(t.invalidId);
       return;
     }
     if (id === latestAppRef.current.identity.id) {
-      setSelectedChatId('saved');
-      setActiveTab('chats');
-      setMobileChatOpen(true);
+      if (focus) {
+        setSelectedChatId('saved');
+        setActiveTab('chats');
+        setMobileChatOpen(true);
+      }
       return;
     }
     const online = onlineUsers.find((user) => user.id === id);
@@ -1299,9 +1332,11 @@ function App() {
       };
       return { ...current, chats: [chat, ...current.chats] };
     });
-    setSelectedChatId(id);
-    setActiveTab('chats');
-    setMobileChatOpen(true);
+    if (focus) {
+      setSelectedChatId(id);
+      setActiveTab('chats');
+      setMobileChatOpen(true);
+    }
     socketRef.current?.emit('guest:lookup', { id }, (result) => {
       if (result?.found && result.name && !suggestedName.trim()) {
         setApp((current) => ({
@@ -1317,6 +1352,18 @@ function App() {
         }));
       }
     });
+  }
+
+  function openFloatingChat(peerId, suggestedName = '') {
+    const id = parseGuestId(peerId);
+    if (!ID_PATTERN.test(id) || id === latestAppRef.current.identity.id) return;
+    if (floatingChatPeerId === id) {
+      setFloatingChatPeerId('');
+      return;
+    }
+    openPeer(id, suggestedName, { focus: false });
+    setFloatingChatPeerId(id);
+    setFloatingChatHeads((heads) => heads.map((head) => head.senderId === id ? { ...head, count: 0 } : head));
   }
 
   function chooseTab(tab) {
@@ -2104,6 +2151,59 @@ function App() {
     setDetailsOpen(false);
   }
 
+  function returnToFullChat() {
+    setQuickChatMode(false);
+    setActiveTab('chats');
+    setMobileChatOpen(true);
+  }
+
+  if (quickChatMode) {
+    return (
+      <div className={`app-shell quick-chat-mode theme-${app.settings.theme || 'light'}`}>
+        {selectedChat?.peerId ? (
+          <MessengerChatPanel
+            chat={selectedChat}
+            identity={app.identity}
+            messages={selectedChat.messages}
+            isOnline={Boolean(onlineUsers.some((user) => user.id === selectedChat.peerId))}
+            typing={Boolean(typingPeers[selectedChat.peerId])}
+            t={t}
+            language={language}
+            fullScreen
+            onClose={returnToFullChat}
+            onOpenFull={returnToFullChat}
+            onSend={(text) => sendToChat(selectedChat.id, { type: 'text', text })}
+            onStartCall={(kind) => startCall(kind, selectedChat)}
+            onTyping={(active) => socketRef.current?.emit('typing:update', { toId: selectedChat.peerId, active })}
+          />
+        ) : (
+          <div className="quick-chat-loading" role="status">Opening your chat…</div>
+        )}
+        {callState && (
+          <CallOverlay
+            call={callState}
+            t={t}
+            language={language}
+            onAccept={acceptCall}
+            onDecline={declineCall}
+            onEnd={() => closeCall('ended', true)}
+            onMute={toggleCallMute}
+            onVideo={toggleCallVideo}
+            onSpeaker={toggleSpeaker}
+            onKeypad={toggleKeypad}
+            onDigit={sendCallDigit}
+            onScreenShare={screenSharing ? stopScreenShare : requestScreenShare}
+            onSwitchCamera={switchCamera}
+            onRecordScreen={toggleCallScreenRecording}
+            screenRecording={callRecording}
+            screenRecordingSeconds={callRecordingSeconds}
+          />
+        )}
+        {toast && <div className={`toast-message${toastAboveCall ? ' toast-message-above-call' : ''}`} role="status">{toast}</div>}
+      </div>
+    );
+  }
+
   return (
     <div className={`app-shell theme-${app.settings.theme || 'light'} ${mobileChatOpen ? 'mobile-chat-open' : ''}`}>
       <aside className="sidebar">
@@ -2350,7 +2450,7 @@ function App() {
           <div className="notif-permission-icon"><Bell size={22} /></div>
           <div className="notif-permission-content">
             <strong>মেসেজ ও কল নোটিফিকেশন চালু করুন</strong>
-            <p>নতুন মেসেজ ও ইনকামিং কল আসলে সাউন্ড ও বাবল নোটিফিকেশন পেতে পারমিশন চালু করুন।</p>
+            <p>নতুন মেসেজ বা কল এলে সিস্টেম নোটিফিকেশন পেতে অনুমতি দিন। নোটিফিকেশনে চাপলে সরাসরি ছোট চ্যাট খুলবে।</p>
           </div>
           <div className="notif-permission-buttons">
             <button type="button" className="notif-grant-btn" onClick={requestNotificationPermission}>অনুমতি দিন (Allow)</button>
@@ -2382,24 +2482,22 @@ function App() {
         <div className="messenger-chat-heads">
           {floatingChatHeads.map((head) => (
             <div key={head.senderId} className="messenger-head-item">
-              <div className="messenger-head-speech-bubble" onClick={() => {
-                openPeer(head.senderId, head.senderName);
-                setFloatingChatHeads((heads) => heads.filter((h) => h.senderId !== head.senderId));
-              }}>
+              <button
+                type="button"
+                className="messenger-head-speech-bubble"
+                onClick={() => openFloatingChat(head.senderId, head.senderName)}
+              >
                 <strong>{head.senderName}</strong>
                 <p>{head.text}</p>
-              </div>
+              </button>
               <button
                 type="button"
                 className="messenger-head-bubble-btn"
-                onClick={() => {
-                  openPeer(head.senderId, head.senderName);
-                  setFloatingChatHeads((heads) => heads.filter((h) => h.senderId !== head.senderId));
-                }}
+                onClick={() => openFloatingChat(head.senderId, head.senderName)}
                 aria-label={`Open chat with ${head.senderName}`}
               >
                 <Avatar name={head.senderName} id={head.senderId} photo={head.senderAvatar} size="lg" online />
-                {head.count > 1 && <span className="messenger-head-badge">{head.count}</span>}
+                {head.count > 0 && <span className="messenger-head-badge">{head.count}</span>}
               </button>
               <button
                 type="button"
@@ -2416,6 +2514,26 @@ function App() {
             </div>
           ))}
         </div>
+      )}
+
+      {floatingChat && !callState && (
+        <MessengerChatPanel
+          chat={floatingChat}
+          identity={app.identity}
+          messages={floatingChat.messages}
+          isOnline={Boolean(onlineUsers.some((user) => user.id === floatingChat.peerId))}
+          typing={Boolean(typingPeers[floatingChat.peerId])}
+          t={t}
+          language={language}
+          onClose={() => setFloatingChatPeerId('')}
+          onOpenFull={() => {
+            setFloatingChatPeerId('');
+            openPeer(floatingChat.peerId, floatingChat.name);
+          }}
+          onSend={(text) => sendToChat(floatingChat.id, { type: 'text', text })}
+          onStartCall={(kind) => startCall(kind, floatingChat)}
+          onTyping={(active) => socketRef.current?.emit('typing:update', { toId: floatingChat.peerId, active })}
+        />
       )}
 
       {modal === 'settings' && (
@@ -2446,8 +2564,7 @@ function App() {
             const permission = await Notification.requestPermission();
             updateSettings({ notifications: permission === 'granted' });
             if (permission === 'granted') {
-              await subscribeToPush(socketRef.current);
-              showToast(t.copied);
+              showToast('ব্যাকগ্রাউন্ড মেসেজ নোটিফিকেশন চালু হয়েছে');
             }
           }}
         />
@@ -2607,6 +2724,110 @@ function PersonCard({ person, t, onMessage, onCall, compact = false }) {
         <button title={t.videoCall} aria-label={t.videoCall} onClick={() => onCall('video')}><Video size={15} /></button>
       </div>
     </div>
+  );
+}
+
+export function MessengerChatPanel({
+  chat, identity, messages = [], isOnline = false, typing = false, t, language = 'en',
+  fullScreen = false, onClose, onOpenFull, onSend, onStartCall, onTyping,
+}) {
+  const [draft, setDraft] = useState('');
+  const messagesEndRef = useRef(null);
+  const composerRef = useRef(null);
+  const typingTimerRef = useRef(null);
+  const typingActiveRef = useRef(false);
+  const peerName = chat?.name || chat?.peerId || 'Chat';
+
+  function notifyTyping(active) {
+    if (typingActiveRef.current === active) return;
+    typingActiveRef.current = active;
+    onTyping?.(active);
+  }
+
+  useEffect(() => () => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    if (typingActiveRef.current) onTyping?.(false);
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length, typing]);
+
+  useEffect(() => {
+    composerRef.current?.focus();
+  }, []);
+
+  function submit(event) {
+    event?.preventDefault?.();
+    const text = draft.trim();
+    if (!text) return;
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    notifyTyping(false);
+    onSend?.(text);
+    setDraft('');
+  }
+
+  return (
+    <section className={`messenger-chat-window ${fullScreen ? 'messenger-chat-window-full' : ''}`} role="dialog" aria-label={`Chat with ${peerName}`}>
+      <header className="messenger-chat-header">
+        <Avatar name={peerName} id={chat?.peerId || ''} photo={chat?.avatar || ''} size="md" online={isOnline} />
+        <div className="messenger-chat-peer">
+          <strong>{peerName}</strong>
+          <small className={isOnline ? 'messenger-peer-online' : ''}>{isOnline ? t.online : t.offline}</small>
+        </div>
+        <div className="messenger-chat-actions">
+          {onStartCall && !fullScreen && <button type="button" onClick={() => onStartCall('audio')} title={t.voiceCall} aria-label={t.voiceCall}><Phone size={17} /></button>}
+          {onOpenFull && !fullScreen && <button type="button" onClick={onOpenFull} title="Open full chat" aria-label="Open full chat"><ArrowUpRight size={18} /></button>}
+          {fullScreen
+            ? <button type="button" onClick={onOpenFull || onClose} title="Open full app" aria-label="Open full app"><ArrowUpRight size={18} /></button>
+            : <button type="button" onClick={onClose} title="Minimize chat" aria-label="Minimize chat"><ChevronDown size={19} /></button>}
+        </div>
+      </header>
+      <div className="messenger-chat-messages" aria-live="polite">
+        {!messages.length && <div className="messenger-chat-empty">{t.startConversation}</div>}
+        <div className="message-list">
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              own={message.fromId === identity.id}
+              t={t}
+              language={language}
+              onCallPeer={onStartCall}
+            />
+          ))}
+        </div>
+        {typing && <div className="typing-indicator"><span><i /><i /><i /></span><small>{peerName}…</small></div>}
+        <div ref={messagesEndRef} />
+      </div>
+      <form className="messenger-chat-composer" onSubmit={submit}>
+        <textarea
+          ref={composerRef}
+          value={draft}
+          onChange={(event) => {
+            const value = event.target.value;
+            setDraft(value);
+            if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+            if (value.trim()) {
+              notifyTyping(true);
+              typingTimerRef.current = setTimeout(() => notifyTyping(false), 1500);
+            } else {
+              notifyTyping(false);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              submit(event);
+            }
+          }}
+          rows={1}
+          placeholder={t.typeMessage}
+          aria-label={t.typeMessage}
+        />
+        <button type="submit" disabled={!draft.trim()} title={t.send} aria-label={t.send}><Send size={17} /></button>
+      </form>
+    </section>
   );
 }
 
@@ -3285,7 +3506,7 @@ function SettingsDialog({
                   if (nextVal) {
                     enableNotifications();
                   }
-                }}><span className="setting-row-icon"><Smartphone size={17} /></span><span><strong>ব্যাকগ্রাউন্ড কল ও মেসেজ অ্যালার্ট</strong><small>ওয়েবসাইট বন্ধ থাকলেও মোবাইলে কল ও মেসেজের রিংটোন/নোটিফিকেশন আসবে।</small></span><span className={`toggle-switch ${app.settings.backgroundAlerts !== false && app.settings.notifications ? 'toggle-on' : ''}`}><i /></span></button>
+                }}><span className="setting-row-icon"><Smartphone size={17} /></span><span><strong>ব্যাকগ্রাউন্ড কল ও মেসেজ অ্যালার্ট</strong><small>HTTPS, নোটিফিকেশন অনুমতি ও ইন্টারনেট থাকলে ওয়েবসাইট বন্ধ থাকলেও অ্যালার্ট আসবে। মোবাইলে আরও নির্ভরযোগ্য ব্যবহারের জন্য অ্যাপটি Home Screen-এ ইনস্টল করুন।</small></span><span className={`toggle-switch ${app.settings.backgroundAlerts !== false && app.settings.notifications ? 'toggle-on' : ''}`}><i /></span></button>
                 <button className="setting-toggle-row setting-card-row" onClick={() => onSettings({ sound: !app.settings.sound })}><span className="setting-row-icon">{app.settings.sound ? <Volume2 size={17} /> : <VolumeX size={17} />}</span><span><strong>{t.sound}</strong><small>Play chime sounds for incoming messages & calls.</small></span><span className={`toggle-switch ${app.settings.sound ? 'toggle-on' : ''}`}><i /></span></button>
               </>}
 

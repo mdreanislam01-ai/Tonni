@@ -392,16 +392,21 @@ io.on('connection', (socket) => {
       const queue = inboxes.get(toId) ?? [];
       if (!queue.some((item) => item.id === messageId)) queue.push(message);
       inboxes.set(toId, queue.slice(-200));
-
-      // Send background push notification to wake up device!
-      sendPushNotification(toId, {
-        type: 'message',
-        fromId: senderId,
-        fromName: sender.name,
-        fromAvatar: sender.avatar,
-        text: text || (type === 'audio' ? '🎤 Voice message' : '📷 Photo'),
-      });
     }
+
+    // Send Push even when a socket looks connected. Mobile browsers can suspend
+    // a live page without immediately dropping its socket; the service worker
+    // suppresses the OS alert when the app is visible and focused.
+    sendPushNotification(toId, {
+      type: 'message',
+      messageId,
+      fromId: senderId,
+      fromName: sender.name,
+      // Web Push payloads are size-limited; omit large profile pictures and
+      // preview text so notifications still work for long messages.
+      fromAvatar: sender.avatar?.length <= 1_400 ? sender.avatar : '',
+      text: (text || (type === 'audio' ? '🎤 Voice message' : type === 'image' ? '📷 Photo' : '📎 Attachment')).slice(0, 280),
+    });
     ackWith(ack, { ok: true, status: target ? 'delivered' : 'sent' });
   });
 

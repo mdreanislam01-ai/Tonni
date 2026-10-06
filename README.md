@@ -32,8 +32,15 @@ The server listens on `PORT` when provided, otherwise port `4173`, and binds to 
 - One-to-one audio/video calls using WebRTC, with mute, speaker, keypad, camera switching, and opt-in screen sharing.
 - **Record screen during a call**: one tap records the call picture (your shared screen becomes the main frame) together with both voices, and the finished video file is written straight to the device — the phone's Download folder on mobile, or a folder you pick on desktop. A private on-device library (Calls → Recordings) can replay, re-save, share, or delete each recording. Nothing is uploaded to the server. Recording is built on canvas capture + MediaRecorder, so it also works on Android/iOS browsers that do not expose `getDisplayMedia`.
 - Home, chats, contacts, call history, profile and privacy controls, local data/storage, theme, notifications, help, and guest logout.
+- Messenger-style in-page chat heads open a compact chat panel; background push alerts open a focused quick-chat view with a text composer, without routing through the home screen.
 - Profile photos, usernames, and optional phone numbers can be added without creating an account. Contacts are imported only after an explicit browser contact-picker action.
 - Chat history and preferences are stored locally in the browser. The interface is English-only, responsive, and uses Poppins headings with Inter body text.
+
+## Background messages and quick chat
+
+The site does not need to remain open for background message alerts: the browser's service worker receives Web Push and shows a system notification, and tapping it opens the compact quick-chat screen directly. In the foreground, tapping a Messenger-style chat head opens a floating conversation panel without changing the current page.
+
+For background alerts, deploy on HTTPS, grant notification permission, leave the background-alert setting enabled, and keep the Node/Socket.IO server available. On iPhone/iPad, Web Push requires a supported iOS version and the web app added to the Home Screen; behavior and notification action buttons vary by browser/OS. Web pages cannot create an always-on-top Messenger bubble over other apps, and browser notifications cannot provide a universal inline text-reply field. The notification's Reply action therefore opens the compact chat composer; it does not send a reply without opening the app surface. A true OS-level chat head/inline reply needs a native app (and Android overlay permission).
 
 ## Hosting and privacy notes
 
