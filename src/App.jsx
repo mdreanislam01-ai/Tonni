@@ -301,8 +301,9 @@ function formatDay(value, language = 'en') {
   }
 }
 
-function previewText(message, t) {
+function previewText(message, t, language = 'en') {
   if (!message) return t.savedSub;
+  if (message.type === 'call_missed') return language === 'bn' ? `📞 মিসড ${message.kind === 'video' ? 'ভিডিও' : 'অডিও'} কল` : `📞 Missed ${message.kind === 'video' ? 'video' : 'audio'} call`;
   if (message.type === 'audio') return `♪ ${t.voiceMessage}`;
   if (message.type === 'image') return `▧ ${t.file}`;
   if (message.type === 'file') return `▤ ${message.attachment?.name || t.file}`;
@@ -503,6 +504,22 @@ function App() {
 
   function receiveRemoteMessage(message) {
     if (!message?.fromId || !message.id) return;
+
+    if (message.type === 'message_delivered_receipt') {
+      if (message.targetMessageId) patchMessageStatus(message.targetMessageId, 'delivered');
+      return;
+    }
+
+    if (message.type === 'chat_read_receipt') {
+      setApp((current) => ({
+        ...current,
+        chats: current.chats.map((chat) => chat.peerId === message.fromId ? {
+          ...chat,
+          messages: chat.messages.map((m) => m.fromId === current.identity.id ? { ...m, status: 'read' } : m),
+        } : chat),
+      }));
+      return;
+    }
     const isActive = activeTabRef.current === 'chats' && selectedChatRef.current === message.fromId && document.visibilityState === 'visible';
     setApp((current) => {
       const existingChat = current.chats.find((chat) => chat.peerId === message.fromId);
@@ -554,7 +571,7 @@ function App() {
     });
 
     socketRef.current?.emit('message:delivered', { id: message.id, fromId: message.fromId });
-    if (isActive && message.type !== 'call_missed') socketRef.current?.emit('chat:read', { peerId: message.fromId });
+    if (isActive) socketRef.current?.emit('chat:read', { peerId: message.fromId });
     else {
       const snippet = message.type === 'call_missed'
         ? `📞 Missed ${message.kind === 'video' ? 'video' : 'audio'} call`
@@ -1612,7 +1629,23 @@ function App() {
                     <span className="chat-list-copy">
                       <span className="chat-list-title"><strong>{chat.kind === 'saved' ? t.saved : chat.name}</strong><time>{lastMessage ? formatTime(lastMessage.createdAt, language) : ''}</time></span>
                       <span className="chat-list-preview">
-                        <span>{lastMessage?.fromId === app.identity.id && chat.kind !== 'saved' ? `${t.you}: ` : ''}{lastMessage ? previewText(lastMessage, t) : chat.kind === 'saved' ? t.savedSub : chat.peerId}</span>
+                        <span>
+                          {lastMessage?.fromId === app.identity.id && chat.kind !== 'saved' && (
+                            <span className={`preview-tick status-${lastMessage.status}`}>
+                              {lastMessage.status === 'read' ? (
+                                <CheckCheck size={14} className="wa-tick-read" />
+                              ) : lastMessage.status === 'delivered' ? (
+                                <CheckCheck size={14} className="wa-tick-delivered" />
+                              ) : lastMessage.status === 'pending' ? (
+                                <Clock3 size={12} />
+                              ) : (
+                                <Check size={14} className="wa-tick-sent" />
+                              )}
+                            </span>
+                          )}
+                          {lastMessage?.fromId === app.identity.id && chat.kind !== 'saved' ? `${t.you}: ` : ''}
+                          {lastMessage ? previewText(lastMessage, t, language) : chat.kind === 'saved' ? t.savedSub : chat.peerId}
+                        </span>
                         <span className="chat-row-meta">{chat.pinned && chat.kind !== 'saved' && <Pin size={12} />}{chat.unread > 0 && <b>{chat.unread > 99 ? '99+' : chat.unread}</b>}</span>
                       </span>
                     </span>
@@ -2385,7 +2418,7 @@ function MessageBubble({ message, own, t, language, onCallPeer }) {
   const file = message.attachment;
   const isVoice = message.type === 'audio';
   const isMissedCall = message.type === 'call_missed';
-  const statusLabel = message.status === 'read' ? t.messageRead : message.status === 'delivered' ? t.messageDelivered : message.status === 'pending' ? t.messagePending : t.messageSent;
+  const statusLabel = message.status === 'read' ? (language === 'bn' ? 'দেখা হয়েছে (Read)' : t.messageRead) : message.status === 'delivered' ? (language === 'bn' ? 'ডেলিভার্ড হয়েছে (Delivered)' : t.messageDelivered) : message.status === 'pending' ? t.messagePending : t.messageSent;
   return (
     <div className={`message-row ${own ? 'message-own' : 'message-theirs'}`}>
       <div className={`message-bubble ${isVoice ? 'message-bubble-voice' : ''} ${isMissedCall ? 'message-bubble-call' : ''}`}>
@@ -2404,7 +2437,19 @@ function MessageBubble({ message, own, t, language, onCallPeer }) {
             </div>
             <div className="missed-call-details">
               <strong>{language === 'bn' ? (message.kind === 'video' ? 'মিসড ভিডিও কল' : 'মিসড অডিও কল') : (message.kind === 'video' ? 'Missed Video Call' : 'Missed Audio Call')}</strong>
-              <small>{own ? (language === 'bn' ? 'আউটগোয়িং · উত্তর দেননি' : 'Outgoing · No answer') : (language === 'bn' ? 'ইনকামিং · কল করতে ট্যাপ করুন' : 'Incoming · Tap to call back')}</small>
+              <small>
+                {own ? (
+                  message.status === 'read' ? (
+                    language === 'bn' ? 'আউটগোয়িং · অপরজন দেখেছে ✓✓' : 'Outgoing · Seen by recipient ✓✓'
+                  ) : message.status === 'delivered' ? (
+                    language === 'bn' ? 'আউটগোয়িং · ডিভাইসে পৌঁছেছে ✓✓' : 'Outgoing · Delivered to device ✓✓'
+                  ) : (
+                    language === 'bn' ? 'আউটগোয়িং · মিসড কল পাঠানো হয়েছে ✓' : 'Outgoing · Missed call sent ✓'
+                  )
+                ) : (
+                  language === 'bn' ? 'ইনকামিং · কল করতে ট্যাপ করুন' : 'Incoming · Tap to call back'
+                )}
+              </small>
             </div>
             {!own && onCallPeer && (
               <button
@@ -2423,7 +2468,23 @@ function MessageBubble({ message, own, t, language, onCallPeer }) {
         {file && message.type === 'image' && !message.text && <span className="attachment-caption">{file.name}</span>}
         <span className="message-meta">
           <time>{time}</time>
-          {own && !isMissedCall && <span className={`message-status status-${message.status}`} title={statusLabel}>{message.status === 'pending' ? <Clock3 size={13} /> : message.status === 'read' || message.status === 'delivered' ? <CheckCheck size={15} /> : <Check size={14} />}</span>}
+          {own && (
+            <span
+              className={`message-status status-${message.status}`}
+              title={statusLabel}
+              aria-label={statusLabel}
+            >
+              {message.status === 'pending' ? (
+                <Clock3 size={13} />
+              ) : message.status === 'read' ? (
+                <CheckCheck size={16} className="wa-tick-read" />
+              ) : message.status === 'delivered' ? (
+                <CheckCheck size={16} className="wa-tick-delivered" />
+              ) : (
+                <Check size={14} className="wa-tick-sent" />
+              )}
+            </span>
+          )}
         </span>
       </div>
     </div>

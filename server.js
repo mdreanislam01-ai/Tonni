@@ -354,19 +354,51 @@ io.on('connection', (socket) => {
   socket.on('message:delivered', (payload = {}) => {
     const recipientId = socketGuests.get(socket.id);
     const fromId = normaliseId(payload.fromId);
-    if (!recipientId || !validId(fromId)) return;
+    const msgId = String(payload.id ?? '').slice(0, 100);
+    if (!recipientId || !validId(fromId) || !msgId) return;
+
     io.to(roomFor(fromId)).emit('message:status', {
-      id: String(payload.id ?? '').slice(0, 100),
+      id: msgId,
       status: 'delivered',
       byId: recipientId,
     });
+
+    const target = activeUsers.get(fromId);
+    if (!target) {
+      const deliveryNotice = {
+        id: `deliv-${msgId}`,
+        fromId: recipientId,
+        toId: fromId,
+        type: 'message_delivered_receipt',
+        targetMessageId: msgId,
+        createdAt: Date.now(),
+      };
+      const queue = inboxes.get(fromId) ?? [];
+      if (!queue.some((item) => item.id === deliveryNotice.id)) queue.push(deliveryNotice);
+      inboxes.set(fromId, queue.slice(-200));
+    }
   });
 
   socket.on('chat:read', (payload = {}) => {
     const readerId = socketGuests.get(socket.id);
     const peerId = normaliseId(payload.peerId);
     if (!readerId || !validId(peerId)) return;
+
     io.to(roomFor(peerId)).emit('chat:read', { byId: readerId });
+
+    const target = activeUsers.get(peerId);
+    if (!target) {
+      const readNotice = {
+        id: `read-${readerId}-${Date.now()}`,
+        fromId: readerId,
+        toId: peerId,
+        type: 'chat_read_receipt',
+        createdAt: Date.now(),
+      };
+      const queue = inboxes.get(peerId) ?? [];
+      queue.push(readNotice);
+      inboxes.set(peerId, queue.slice(-200));
+    }
   });
 
   socket.on('typing:update', (payload = {}) => {
