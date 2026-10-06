@@ -31,6 +31,7 @@ import {
   MicOff,
   Moon,
   MoreHorizontal,
+  Palette,
   Paperclip,
   Pause,
   Play,
@@ -60,6 +61,15 @@ import {
 const STORAGE_KEY = 'you-and-me.local.v1';
 const ID_PATTERN = /^YM-[A-Z0-9]{6}$/;
 const ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+const THEMES = [
+  { id: 'light', label: 'Classic Light', swatch: '#2563eb', desc: 'Clean Blue & White' },
+  { id: 'dark', label: 'Dark Mode', swatch: '#151f32', desc: 'Soft Dark Theme' },
+  { id: 'whatsapp', label: 'WhatsApp Green', swatch: '#00a884', desc: 'Signature Emerald' },
+  { id: 'midnight', label: 'Midnight Blue', swatch: '#0b132b', desc: 'Deep Navy & Cyan' },
+  { id: 'sunset', label: 'Sunset Peach', swatch: '#f97316', desc: 'Warm Coral & Cream' },
+];
+
 const QUICK_EMOJIS = ['😀', '🥰', '😂', '😊', '❤️', '👍', '🙌', '🔥', '🙏', '😘', '🤔', '🎉', '✨', '💚', '👏', '😎'];
 const AVATAR_COLORS = [
   ['#c7f4e4', '#2f9679'],
@@ -181,7 +191,7 @@ function createDefaultApp() {
   const suffix = identity.id.slice(-4).toLowerCase();
   return {
     identity,
-    profile: { name: `Guest ${suffix.toUpperCase()}`, username: `guest${suffix}`, phone: '', phonePublic: false, avatar: '' },
+    profile: { name: `User ${suffix.toUpperCase()}`, username: `user${suffix}`, bio: 'Available', phone: '', phonePublic: false, avatar: '' },
     chats: [makeSavedChat()],
     calls: [],
     contacts: [],
@@ -199,9 +209,12 @@ function readStoredApp() {
       ...createDefaultApp(),
       ...value,
       profile: {
-        name: `Guest ${value.identity.id.slice(-4)}`,
-        username: `guest${value.identity.id.slice(-4).toLowerCase()}`,
-        phone: '', phonePublic: false, avatar: '',
+        name: value.profile?.name || `User ${value.identity.id.slice(-4)}`,
+        username: value.profile?.username || `user${value.identity.id.slice(-4).toLowerCase()}`,
+        bio: value.profile?.bio || 'Available',
+        phone: value.profile?.phone || '',
+        phonePublic: Boolean(value.profile?.phonePublic),
+        avatar: value.profile?.avatar || '',
         ...(value.profile ?? {}),
       },
       chats,
@@ -447,8 +460,9 @@ function App() {
       const received = { ...message, status: 'delivered' };
       const updated = {
         ...newChat,
-        name: newChat.customName ? newChat.name : message.senderName || newChat.name,
+        name: newChat.customName ? newChat.name : (message.senderName || newChat.name),
         username: message.senderUsername || newChat.username || '',
+        bio: message.senderBio || newChat.bio || '',
         phone: message.senderPhone || newChat.phone || '',
         avatar: message.senderAvatar || newChat.avatar || '',
         messages: [...newChat.messages, received].slice(-180),
@@ -713,10 +727,12 @@ function App() {
       showToast(t.phoneInvalid);
       return false;
     }
+    const safeDisplayName = profile.name.trim().slice(0, 40) || `User ${latestAppRef.current.identity.id.slice(-4)}`;
     updateProfile({
       ...profile,
-      name: profile.name.trim().slice(0, 40) || `Guest ${latestAppRef.current.identity.id.slice(-4)}`,
+      name: safeDisplayName,
       username: normaliseUsername(profile.username),
+      bio: String(profile.bio ?? '').trim().slice(0, 160),
       phone,
       phonePublic: Boolean(profile.phonePublic && phone),
     });
@@ -803,10 +819,17 @@ function App() {
     setActiveTab('chats');
     setMobileChatOpen(true);
     socketRef.current?.emit('guest:lookup', { id }, (result) => {
-      if (result?.online && result.name && !suggestedName.trim()) {
+      if (result?.found && result.name && !suggestedName.trim()) {
         setApp((current) => ({
           ...current,
-          chats: current.chats.map((chat) => chat.peerId === id && !chat.customName ? { ...chat, name: result.name } : chat),
+          chats: current.chats.map((chat) => chat.peerId === id && !chat.customName ? {
+            ...chat,
+            name: result.name,
+            username: result.username || chat.username || '',
+            avatar: result.avatar || chat.avatar || '',
+            bio: result.bio || chat.bio || '',
+            phone: result.phone || chat.phone || '',
+          } : chat),
         }));
       }
     });
@@ -1305,7 +1328,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${app.settings.theme === 'dark' ? 'theme-dark' : ''} ${mobileChatOpen ? 'mobile-chat-open' : ''}`}>
+    <div className={`app-shell theme-${app.settings.theme || 'light'} ${mobileChatOpen ? 'mobile-chat-open' : ''}`}>
       <aside className="sidebar">
         <header className="sidebar-top">
           <div className="brand-lockup">
@@ -1487,7 +1510,7 @@ function App() {
             recordingSeconds={recordingSeconds}
             composerRef={composerRef}
             messageEndRef={messageEndRef}
-            detailsProps={{ onPin: () => togglePin(selectedChat), onClear: clearSelectedChat, onClose: () => setDetailsOpen(false), onCopyPeer: () => copyText(selectedChat.peerId || app.identity.id), isPinned: selectedChat.pinned, online: selectedIsOnline }}
+            detailsProps={{ onPin: () => togglePin(selectedChat), onClear: clearSelectedChat, onClose: () => setDetailsOpen(false), onCopyPeer: () => copyText(selectedChat.peerId || app.identity.id), isPinned: selectedChat.pinned, online: selectedIsOnline, currentTheme: app.settings.theme || 'light', onSelectTheme: (t) => updateSettings({ theme: t }) }}
           />
         )}
         {activeTab === 'calls' && (
@@ -1684,6 +1707,7 @@ function ConversationView({
 }) {
   const isSaved = chat.kind === 'saved';
   const peerName = isSaved ? t.saved : chat.name;
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   return (
     <div className={`conversation-shell ${detailsOpen ? 'details-visible' : ''}`}>
       <section className="conversation-main">
@@ -1704,9 +1728,24 @@ function ConversationView({
               <button className="header-action video-action" title={t.videoCall} aria-label={t.videoCall} onClick={() => onStartCall('video')}><Video size={20} /></button>
             </>}
             <span className="header-action-divider" />
+            <button type="button" className={`header-action ${themeMenuOpen ? 'active' : ''}`} title="Change chat theme" aria-label="Change chat theme" onClick={() => setThemeMenuOpen((v) => !v)}><Palette size={19} /></button>
             <button className={`header-action ${detailsOpen ? 'active' : ''}`} title={t.profile} aria-label={t.profile} onClick={onOpenDetails}><Info size={19} /></button>
             <button className="header-action mobile-more" title={t.settings} aria-label={t.settings} onClick={onOpenDetails}><MoreHorizontal size={20} /></button>
           </div>
+          {themeMenuOpen && (
+            <div className="theme-popover">
+              <div className="theme-popover-head"><span>Chat Theme</span><button type="button" onClick={() => setThemeMenuOpen(false)}><X size={14} /></button></div>
+              <div className="theme-popover-list">
+                {THEMES.map((theme) => (
+                  <button key={theme.id} type="button" className={`theme-popover-option ${detailsProps.currentTheme === theme.id ? 'theme-active' : ''}`} onClick={() => { detailsProps.onSelectTheme(theme.id); setThemeMenuOpen(false); }}>
+                    <span className="theme-color-dot" style={{ background: theme.swatch }} />
+                    <div className="theme-option-text"><strong>{theme.label}</strong><small>{theme.desc}</small></div>
+                    {detailsProps.currentTheme === theme.id && <Check size={16} className="theme-check-icon" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </header>
 
         <div className="message-area">
@@ -1783,7 +1822,45 @@ function ConversationView({
       {detailsOpen && (
         <aside className="details-panel">
           <header><strong>{t.profile}</strong><button className="icon-button" onClick={detailsProps.onClose} aria-label={t.close}><X size={18} /></button></header>
-          <div className="details-profile"><Avatar name={peerName} id={chat.peerId || 'saved'} saved={isSaved} size="xl" online={isOnline} photo={chat.avatar} /><strong>{peerName}</strong><span>{isSaved ? t.privateSpace : chat.peerId}</span></div>
+          <div className="details-profile">
+            <Avatar name={peerName} id={chat.peerId || 'saved'} saved={isSaved} size="xl" online={isOnline} photo={chat.avatar} />
+            <strong>{peerName}</strong>
+            {chat.username && <span className="details-username">@{chat.username}</span>}
+            <span>{isSaved ? t.privateSpace : chat.peerId}</span>
+          </div>
+
+          {chat.bio && (
+            <div className="details-info-section">
+              <small>About / Status</small>
+              <p>"{chat.bio}"</p>
+            </div>
+          )}
+
+          {chat.phone && (
+            <div className="details-info-section">
+              <small>Phone Number</small>
+              <p>{chat.phone}</p>
+            </div>
+          )}
+
+          <div className="details-theme-section">
+            <small>Chat Theme</small>
+            <div className="details-theme-pills">
+              {THEMES.map((theme) => (
+                <button
+                  key={theme.id}
+                  type="button"
+                  className={`theme-pill ${detailsProps.currentTheme === theme.id ? 'pill-active' : ''}`}
+                  onClick={() => detailsProps.onSelectTheme(theme.id)}
+                  title={theme.label}
+                >
+                  <span className="theme-pill-dot" style={{ background: theme.swatch }} />
+                  <span>{theme.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="details-actions">
             {!isSaved && <button onClick={detailsProps.onPin}><Pin size={17} /><span>{chat.pinned ? t.unpinChat : t.pinChat}</span></button>}
             <button onClick={detailsProps.onCopyPeer}><Copy size={17} /><span>{t.copyId}</span></button>
@@ -2134,6 +2211,7 @@ function SettingsDialog({
   const [draft, setDraft] = useState({
     name: app.profile.name,
     username: app.profile.username || '',
+    bio: app.profile.bio || '',
     phone: app.profile.phone || '',
     phonePublic: Boolean(app.profile.phonePublic),
     avatar: app.profile.avatar || '',
@@ -2209,6 +2287,8 @@ function SettingsDialog({
                 <input className="text-field" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} maxLength={40} />
                 <label className="field-label">{t.username}</label>
                 <div className="username-input-wrap"><span>@</span><input className="text-field" value={draft.username} onChange={(event) => setDraft((current) => ({ ...current, username: normaliseUsername(event.target.value) }))} placeholder="yourname" maxLength={24} /></div>
+                <label className="field-label">About / Bio</label>
+                <input className="text-field" value={draft.bio || ''} onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value.slice(0, 160) }))} placeholder="Hey there! I am using You and Me" maxLength={160} />
                 <label className="field-label">{t.phoneOptional}</label>
                 <input className="text-field" value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))} placeholder="+880 1712 345678" inputMode="tel" maxLength={18} />
                 <p className="field-helper">Your number stays private unless you explicitly make it searchable.</p>

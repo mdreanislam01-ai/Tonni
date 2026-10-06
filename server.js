@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,12 +16,47 @@ const io = new SocketServer(httpServer, {
   cors: { origin: true, credentials: true },
 });
 
+// Profile persistence store
+const dataDir = path.join(__dirname, 'data');
+const profilesFile = path.join(dataDir, 'profiles.json');
+try {
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+} catch {
+  // directory creation fallback
+}
+
+const registeredProfiles = new Map(); // id -> profile
+
+function loadSavedProfiles() {
+  try {
+    if (fs.existsSync(profilesFile)) {
+      const data = JSON.parse(fs.readFileSync(profilesFile, 'utf-8'));
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          if (item?.id) registeredProfiles.set(item.id, item);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load saved profiles:', err.message);
+  }
+}
+loadSavedProfiles();
+
+function saveProfilesToDisk() {
+  try {
+    const list = [...registeredProfiles.values()];
+    fs.writeFileSync(profilesFile, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not save profiles to disk:', err.message);
+  }
+}
+
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, app: 'You and Me', online: activeUsers.size });
+  res.json({ ok: true, app: 'You and Me', online: activeUsers.size, profiles: registeredProfiles.size });
 });
 
-// Guest identities live only in this process. The browser keeps its own ID and
-// private conversation history; no account, phone number, or password is needed.
+// Guest identities live in memory and persist across reloads
 const activeUsers = new Map(); // guest ID -> { id, name, key, sockets: Set<string> }
 const socketGuests = new Map(); // socket ID -> guest ID
 const inboxes = new Map(); // guest ID -> messages waiting for the guest to reconnect
@@ -30,8 +66,9 @@ const userCalls = new Map(); // guest ID -> call ID
 const roomFor = (id) => `guest:${id}`;
 const normaliseId = (value) => String(value ?? '').trim().toUpperCase();
 const validId = (value) => /^YM-[A-Z0-9]{6}$/.test(value);
-const safeName = (value) => String(value ?? 'Guest').trim().replace(/[<>\u0000-\u001f]/g, '').slice(0, 40) || 'Guest';
+const safeName = (value) => String(value ?? 'User').trim().replace(/[<>\u0000-\u001f]/g, '').slice(0, 40) || 'User';
 const safeUsername = (value) => String(value ?? '').trim().replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 24);
+const safeBio = (value) => String(value ?? '').trim().replace(/[<>\u0000-\u001f]/g, '').slice(0, 160);
 const safePhone = (value) => {
   const digits = String(value ?? '').replace(/\D/g, '');
   const national = digits.startsWith('00880') ? digits.slice(2) : digits;
@@ -42,27 +79,48 @@ const safeAvatar = (value) => {
   const avatar = String(value ?? '');
   return /^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(avatar) && avatar.length <= 180_000 ? avatar : '';
 };
+
 const updateGuestProfile = (guest, payload = {}) => {
-  guest.name = safeName(payload.name);
-  guest.username = safeUsername(payload.username);
-  guest.phone = safePhone(payload.phone);
-  guest.phonePublic = Boolean(payload.phonePublic && guest.phone);
-  guest.avatar = safeAvatar(payload.avatar);
-  guest.showPresence = payload.showPresence !== false;
+  if (payload.name && payload.name.trim()) guest.name = safeName(payload.name);
+  if (payload.username !== undefined) guest.username = safeUsername(payload.username);
+  if (payload.bio !== undefined) guest.bio = safeBio(payload.bio);
+  if (payload.phone !== undefined) guest.phone = safePhone(payload.phone);
+  if (payload.phonePublic !== undefined) guest.phonePublic = Boolean(payload.phonePublic && guest.phone);
+  if (payload.avatar !== undefined) guest.avatar = safeAvatar(payload.avatar);
+  if (payload.showPresence !== undefined) guest.showPresence = payload.showPresence !== false;
+
+  // Persist into registeredProfiles
+  registeredProfiles.set(guest.id, {
+    id: guest.id,
+    key: guest.key,
+    name: guest.name,
+    username: guest.username || '',
+    bio: guest.bio || '',
+    phone: guest.phone || '',
+    phonePublic: Boolean(guest.phonePublic),
+    avatar: guest.avatar || '',
+    showPresence: guest.showPresence !== false,
+    updatedAt: Date.now(),
+  });
+  saveProfilesToDisk();
 };
+
 const ackWith = (ack, body) => {
   if (typeof ack === 'function') ack(body);
 };
+
 const publicUsers = () => [...activeUsers.values()]
   .filter((guest) => guest.showPresence)
-  .map(({ id, name, username, phone, phonePublic, avatar }) => ({
+  .map(({ id, name, username, bio, phone, phonePublic, avatar }) => ({
     id,
     name,
-    username,
+    username: username || '',
+    bio: bio || '',
     phone: phonePublic ? phone : '',
-    avatar,
+    avatar: avatar || '',
     online: true,
   }));
+
 const getPeer = (call, id) => (call?.a === id ? call.b : call?.b === id ? call.a : null);
 
 function emitPresence() {
@@ -90,13 +148,26 @@ io.on('connection', (socket) => {
       return;
     }
 
-    let guest = activeUsers.get(id);
-    if (guest && guest.key !== key) {
+    const saved = registeredProfiles.get(id);
+    if (saved && saved.key && saved.key !== key) {
       ackWith(ack, { ok: false, error: 'identity-in-use' });
       return;
     }
+
+    let guest = activeUsers.get(id);
     if (!guest) {
-      guest = { id, key, sockets: new Set() };
+      guest = {
+        id,
+        key,
+        sockets: new Set(),
+        name: saved?.name || safeName(payload.name),
+        username: saved?.username || safeUsername(payload.username),
+        bio: saved?.bio || safeBio(payload.bio),
+        phone: saved?.phone || safePhone(payload.phone),
+        phonePublic: saved ? saved.phonePublic : Boolean(payload.phonePublic),
+        avatar: saved?.avatar || safeAvatar(payload.avatar),
+        showPresence: saved ? saved.showPresence : payload.showPresence !== false,
+      };
       activeUsers.set(id, guest);
     }
     updateGuestProfile(guest, payload);
@@ -115,8 +186,17 @@ io.on('connection', (socket) => {
     const id = socketGuests.get(socket.id);
     const guest = id && activeUsers.get(id);
     if (!guest) return;
-    updateGuestProfile(guest, { ...guest, ...payload });
+    updateGuestProfile(guest, payload);
     emitPresence();
+    // Broadcast live profile update so all open chats with this user refresh instantly
+    io.emit('profile:update', {
+      id: guest.id,
+      name: guest.name,
+      username: guest.username || '',
+      bio: guest.bio || '',
+      avatar: guest.avatar || '',
+      phone: guest.phonePublic ? guest.phone : '',
+    });
   });
 
   socket.on('guest:lookup', (payload = {}, ack) => {
@@ -125,14 +205,29 @@ io.on('connection', (socket) => {
       ackWith(ack, { ok: false, error: 'invalid-id' });
       return;
     }
-    const guest = activeUsers.get(id);
-    const visible = Boolean(guest?.showPresence);
-    ackWith(ack, { ok: true, online: visible, name: visible ? guest.name : null });
+    const active = activeUsers.get(id);
+    const profile = active || registeredProfiles.get(id);
+    if (!profile) {
+      ackWith(ack, { ok: true, found: false });
+      return;
+    }
+    const isOnline = Boolean(active?.sockets?.size);
+    ackWith(ack, {
+      ok: true,
+      found: true,
+      id: profile.id,
+      name: profile.name,
+      username: profile.username || '',
+      bio: profile.bio || '',
+      avatar: profile.avatar || '',
+      phone: profile.phonePublic ? profile.phone : '',
+      online: isOnline,
+    });
   });
 
   socket.on('message:send', (payload = {}, ack) => {
     const senderId = socketGuests.get(socket.id);
-    const sender = senderId && activeUsers.get(senderId);
+    const sender = (senderId && activeUsers.get(senderId)) || registeredProfiles.get(senderId);
     const toId = normaliseId(payload.toId);
     if (!sender || !validId(toId)) {
       ackWith(ack, { ok: false, error: 'not-connected' });
@@ -147,6 +242,7 @@ io.on('connection', (socket) => {
           name: String(payload.attachment.name ?? 'Attachment').slice(0, 180),
           mime: String(payload.attachment.mime ?? 'application/octet-stream').slice(0, 100),
           data: String(payload.attachment.data ?? '').slice(0, 900_000),
+          duration: Number(payload.attachment.duration) || 0,
         }
       : null;
 
@@ -160,9 +256,10 @@ io.on('connection', (socket) => {
       fromId: senderId,
       toId,
       senderName: sender.name,
-      senderUsername: sender.username,
+      senderUsername: sender.username || '',
+      senderBio: sender.bio || '',
       senderPhone: sender.phonePublic ? sender.phone : '',
-      senderAvatar: sender.avatar,
+      senderAvatar: sender.avatar || '',
       text,
       type,
       attachment,
@@ -173,7 +270,6 @@ io.on('connection', (socket) => {
       io.to(roomFor(toId)).emit('message:receive', message);
     } else {
       const queue = inboxes.get(toId) ?? [];
-      // Avoid duplicate delivery when a client retries after a network hiccup.
       if (!queue.some((item) => item.id === messageId)) queue.push(message);
       inboxes.set(toId, queue.slice(-200));
     }
@@ -227,14 +323,14 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const caller = activeUsers.get(fromId);
+    const caller = activeUsers.get(fromId) || registeredProfiles.get(fromId);
     calls.set(callId, { a: fromId, b: toId });
     userCalls.set(fromId, callId);
     userCalls.set(toId, callId);
     io.to(roomFor(toId)).emit('call:incoming', {
       callId,
       fromId,
-      fromName: caller?.name ?? 'Guest',
+      fromName: caller?.name ?? 'User',
       fromAvatar: caller?.avatar ?? '',
       kind,
     });

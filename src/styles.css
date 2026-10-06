@@ -977,3 +977,250 @@ button { -webkit-tap-highlight-color: transparent; }
   background: #029474;
   color: #ffffff;
 }
+
+/* ========================================================
+   Custom Chat Themes (WhatsApp, Dark, Midnight, Sunset)
+   ======================================================== */
+.app-shell.theme-whatsapp {
+  --app-bg: #efeae2;
+  --surface: #ffffff;
+  --surface-soft: #f0f2f5;
+  --surface-hover: #e9edef;
+  --line: #e9edef;
+  --line-strong: #d1d7db;
+  --ink: #111b21;
+  --ink-soft: #3b4a54;
+  --muted: #667781;
+  --brand: #00a884;
+  --brand-dark: #008069;
+  --brand-deep: #005c4b;
+  --brand-light: #d9fdd3;
+  --bubble-own: #d9fdd3;
+  --bubble-other: #ffffff;
+  --thread-bg: #efeae2;
+  background: #efeae2 !important;
+}
+
+.app-shell.theme-midnight {
+  --app-bg: #0b132b;
+  --surface: #1c2541;
+  --surface-soft: #232f54;
+  --surface-hover: #2b3a67;
+  --line: #2b3a67;
+  --line-strong: #3a4d80;
+  --ink: #edf2f4;
+  --ink-soft: #b0c4de;
+  --muted: #7c90b2;
+  --brand: #48bfe3;
+  --brand-dark: #0096c7;
+  --brand-deep: #03045e;
+  --brand-light: #162447;
+  --bubble-own: #1f4068;
+  --bubble-other: #162447;
+  --thread-bg: #0b132b;
+  background: #0b132b !important;
+}
+
+.app-shell.theme-sunset {
+  --app-bg: #fff5eb;
+  --surface: #ffffff;
+  --surface-soft: #fef0e4;
+  --surface-hover: #fde6d5;
+  --line: #fcd7bd;
+  --line-strong: #fbbd93;
+  --ink: #2c1a1d;
+  --ink-soft: #643f44;
+  --muted: #9c7379;
+  --brand: #f97316;
+  --brand-dark: #ea580c;
+  --brand-deep: #c2410c;
+  --brand-light: #ffedd5;
+  --bubble-own: #ffedd5;
+  --bubble-other: #ffffff;
+  --thread-bg: #fff5eb;
+  background: #fff5eb !important;
+}
+
+/* In-Chat Theme Popover */
+.theme-popover {
+  position: absolute;
+  top: 56px;
+  right: 18px;
+  width: 250px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16);
+  z-index: 45;
+  padding: 10px;
+  animation: details-in 0.18s ease-out;
+}
+
+.theme-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.theme-popover-head button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+}
+
+.theme-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.theme-popover-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.theme-popover-option:hover {
+  background: var(--surface-soft);
+}
+
+.theme-popover-option.theme-active {
+  background: var(--surface-hover);
+}
+
+.theme-color-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex: 0 0 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.theme-option-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.theme-option-text strong {
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.theme-option-text small {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.theme-check-icon {
+  color: var(--brand);
+}
+
+/* Details Panel Enhancements for Bio & Custom Themes */
+.details-username {
+  font-size: 11px;
+  color: var(--brand);
+  font-weight: 600;
+  margin-top: -3px;
+}
+
+.details-info-section {
+  width: 100%;
+  padding: 9px 12px;
+  margin-top: 10px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  text-align: left;
+}
+
+.details-info-section small {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.details-info-section p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+.details-theme-section {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  text-align: left;
+}
+
+.details-theme-section small {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.details-theme-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.theme-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  font-size: 10px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: all 0.15s ease;
+}
+
+.theme-pill:hover {
+  border-color: var(--brand);
+}
+
+.theme-pill.pill-active {
+  border-color: var(--brand);
+  background: var(--brand-light);
+  color: var(--brand-dark);
+  font-weight: 600;
+}
+
+.theme-pill-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
