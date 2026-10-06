@@ -9,7 +9,9 @@ import {
   ChevronLeft,
   Clock3,
   Copy,
+  Download,
   FileText,
+  Film,
   Globe,
   Image as ImageIcon,
   Info,
@@ -46,6 +48,7 @@ import {
   ShieldCheck,
   Smile,
   Smartphone,
+  Square,
   UserRound,
   Sun,
   Trash2,
@@ -57,6 +60,20 @@ import {
   VolumeX,
   X,
 } from 'lucide-react';
+import {
+  addRecordingToLibrary,
+  callRecordingSupported,
+  canShareRecording,
+  formatClock,
+  formatRecordingFilename,
+  listRecordings,
+  getRecordingBlob,
+  markRecordingSaved,
+  removeRecordingFromLibrary,
+  saveRecordingToDevice,
+  shareRecordingFile,
+  startCallScreenRecording,
+} from './callRecorder';
 
 const STORAGE_KEY = 'you-and-me.local.v1';
 const ID_PATTERN = /^YM-[A-Z0-9]{6}$/;
@@ -168,6 +185,23 @@ const words = {
     photoUnsupported: 'Use a PNG, JPG, WEBP, or GIF profile image.',
     permissionBeforeUse: 'Your browser will ask permission before this feature starts.',
     sharingNow: 'You are sharing your screen', stop: 'Stop',
+    recordScreen: 'Record screen', stopRecording: 'Stop & save',
+    recordingStarted: 'Recording started — tap Stop & save when you are done',
+    recordingNow: 'Recording', recordingSaved: 'Recording saved to your device',
+    recordingSavedMobile: 'Video file saved — check your phone’s Download folder',
+    recordingTooShort: 'Recording was too short to save',
+    recordingFailed: 'Recording could not be saved. Try again.',
+    recordingUnsupported: 'Screen recording is not supported in this browser.',
+    recordingNeedsCall: 'Start a call first, then tap Record screen.',
+    recordingHint: 'Records the call screen with both voices and saves the video file on this device.',
+    recordingsTitle: 'Call recordings', recordingsSubtitle: 'Saved on this device',
+    recordingsHint: 'Recordings stay in this browser. Save them to your phone files, share them, or delete them any time.',
+    noRecordings: 'No recordings yet', noRecordingsHint: 'Tap Record screen during a video call and the video file is saved on this device.',
+    openRecordings: 'Recordings', saveToFiles: 'Save to files', savedToFiles: 'Saved',
+    deleteRecording: 'Delete recording', deleteRecordingConfirm: 'Delete this recording from this device?',
+    recordingDeleted: 'Recording deleted', shareRecording: 'Share',
+    recordingSavedTitle: 'Recording saved', recordingSavedBody: 'The video file is on your device. Keep a copy in the app, share it, or open your recordings.',
+    viewRecordings: 'View recordings', dismiss: 'Done',
   },
 };
 
@@ -403,6 +437,11 @@ function App() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [screenSharePrompt, setScreenSharePrompt] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [callRecording, setCallRecording] = useState(false);
+  const [callRecordingSeconds, setCallRecordingSeconds] = useState(0);
+  const [savingRecording, setSavingRecording] = useState(false);
+  const [recordings, setRecordings] = useState([]);
+  const [savedRecording, setSavedRecording] = useState(null);
   const [settingsSection, setSettingsSection] = useState('account');
 
   const socketRef = useRef(null);
@@ -445,6 +484,8 @@ function App() {
   const profileFileInputRef = useRef(null);
   const recorderRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const callRecorderRef = useRef(null);
+  const callRecordingTimerRef = useRef(null);
   const cameraTrackRef = useRef(null);
   const globalSearchRef = useRef(null);
   const recordingStreamRef = useRef(null);
@@ -457,6 +498,7 @@ function App() {
 
   const language = app.settings?.language || 'en';
   const t = words[language] || words.en;
+  const canShareRecordings = useMemo(() => canShareRecording(), []);
   const selectedChat = app.chats.find((chat) => chat.id === selectedChatId) ?? app.chats.find((chat) => chat.id === 'saved') ?? null;
   const selectedIsOnline = Boolean(selectedChat?.peerId && onlineUsers.some((user) => user.id === selectedChat.peerId));
   const otherOnlineUsers = onlineUsers.filter((user) => user.id !== app.identity.id);
@@ -1127,6 +1169,9 @@ function App() {
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     recorderRef.current?.state === 'recording' && recorderRef.current.stop();
     recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    if (callRecordingTimerRef.current) clearInterval(callRecordingTimerRef.current);
+    try { callRecorderRef.current?.stop?.(); } catch { /* the recorder cleans itself up */ }
+    callRecorderRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     peerConnectionRef.current?.close();
     incomingNotificationRef.current?.close?.();
@@ -1673,6 +1718,8 @@ function App() {
   function closeCall(reason = 'ended', notifyPeer = true) {
     const call = callRef.current;
     if (!call) return;
+    // Stop any running screen recording first so the file is finalised and saved.
+    if (callRecorderRef.current) finishCallScreenRecording(true);
     closeIncomingCallNotification(call.callId);
     if (callTimeoutRef.current) {
       clearTimeout(callTimeoutRef.current);
@@ -1842,6 +1889,168 @@ function App() {
     setCurrentCall((current) => current ? { ...current, screenSharing: false } : current);
   }
 
+  // ---------------------------------------------------------------------
+  // Call screen recording — captures the call picture plus both voices and
+  // writes the video file straight to this device (Download folder on phones).
+  // ---------------------------------------------------------------------
+
+  function callRecordingSources() {
+    const call = callRef.current;
+    const liveVideo = (stream) => Boolean(stream) && stream.getVideoTracks().some((track) => track.readyState === 'live');
+    const remote = liveVideo(call?.remoteStream) ? call.remoteStream : null;
+    const local = liveVideo(call?.localStream) ? call.localStream : null;
+    const screen = liveVideo(screenStreamRef.current) ? screenStreamRef.current : null;
+    const audio = [remote, local, screen].filter((stream) => Boolean(stream) && stream.getAudioTracks().some((track) => track.readyState === 'live'));
+    const cameraOff = Boolean(local) && !local.getVideoTracks()[0]?.enabled;
+    const remoteOff = Boolean(remote) && remote.getVideoTracks().every((track) => !track.enabled);
+
+    // While you are presenting, the shared screen becomes the big picture and
+    // the other person moves into the small tile.
+    if (screen) {
+      return {
+        main: screen,
+        mainOff: false,
+        pip: remote || local,
+        pipOff: remote ? remoteOff : cameraOff,
+        pipLabel: remote ? (call?.peerName || t.guest) : (latestAppRef.current.profile?.name || t.you),
+        audio,
+      };
+    }
+    return {
+      main: remote,
+      mainOff: remoteOff,
+      pip: local,
+      pipOff: cameraOff,
+      pipLabel: latestAppRef.current.profile?.name || t.you,
+      audio,
+    };
+  }
+
+  async function refreshRecordings() {
+    const items = await listRecordings();
+    setRecordings(items);
+    return items;
+  }
+
+  useEffect(() => { refreshRecordings(); }, []);
+
+  async function startCallScreenRecordingSession() {
+    const call = callRef.current;
+    if (!call) { showToast(t.recordingNeedsCall); return; }
+    if (callRecorderRef.current) return;
+    if (!callRecordingSupported()) { showToast(t.recordingUnsupported); return; }
+    try {
+      const session = await startCallScreenRecording({
+        getSources: callRecordingSources,
+        peerName: call.peerName || t.guest,
+        selfName: latestAppRef.current.profile?.name || t.you,
+        onRecorderError: () => {
+          if (callRecorderRef.current && !callRecorderRef.current.isActive()) finishCallScreenRecording(true);
+        },
+      });
+      callRecorderRef.current = session;
+      setCallRecording(true);
+      setCallRecordingSeconds(0);
+      setCurrentCall((current) => current ? { ...current, screenRecording: true } : current);
+      if (callRecordingTimerRef.current) clearInterval(callRecordingTimerRef.current);
+      callRecordingTimerRef.current = setInterval(() => setCallRecordingSeconds(session.seconds()), 500);
+      showToast(t.recordingStarted);
+    } catch (error) {
+      callRecorderRef.current = null;
+      setCallRecording(false);
+      showToast(error?.code === 'unsupported' ? t.recordingUnsupported : t.recordingFailed);
+    }
+  }
+
+  async function finishCallScreenRecording(quiet = false) {
+    const session = callRecorderRef.current;
+    if (!session) return null;
+    callRecorderRef.current = null;
+    if (callRecordingTimerRef.current) { clearInterval(callRecordingTimerRef.current); callRecordingTimerRef.current = null; }
+    setCallRecording(false);
+    setCallRecordingSeconds(0);
+    setCurrentCall((current) => current ? { ...current, screenRecording: false } : current);
+
+    const call = callRef.current;
+    const peerName = call?.peerName || t.guest;
+    const peerId = call?.peerId || '';
+
+    let result = null;
+    try { result = await session.stop(); } catch { result = null; }
+    if (!result?.blob || result.blob.size < 4096) {
+      if (!quiet) showToast(t.recordingTooShort);
+      return null;
+    }
+
+    setSavingRecording(true);
+    const filename = formatRecordingFilename({ peerName, createdAt: result.startedAt, ext: result.ext });
+    let saveResult = { method: 'failed' };
+    try { saveResult = await saveRecordingToDevice({ blob: result.blob, filename, mime: result.mimeType }); } catch { saveResult = { method: 'failed' }; }
+
+    const entry = {
+      id: `rec-${result.startedAt}-${Math.random().toString(36).slice(2, 8)}`,
+      peerName,
+      peerId,
+      createdAt: result.startedAt,
+      durationMs: result.durationMs,
+      size: result.blob.size,
+      mime: result.mimeType,
+      ext: result.ext,
+      width: result.width,
+      height: result.height,
+      blob: result.blob,
+      savedToDevice: saveResult.method === 'download' || saveResult.method === 'picker',
+    };
+    await addRecordingToLibrary(entry);
+    await refreshRecordings();
+    setSavingRecording(false);
+    const { blob: _storedBlob, ...meta } = entry;
+    setSavedRecording({ ...meta, filename, saved: entry.savedToDevice });
+
+    if (!quiet) {
+      if (saveResult.method === 'failed') showToast(t.recordingFailed);
+      else if (saveResult.method === 'cancelled') showToast(t.recordingSaved);
+      else showToast(t.recordingSavedMobile);
+    }
+    return entry;
+  }
+
+  function toggleCallScreenRecording() {
+    if (callRecorderRef.current) finishCallScreenRecording();
+    else startCallScreenRecordingSession();
+  }
+
+  async function saveRecordingItem(item) {
+    const blob = await getRecordingBlob(item.id);
+    if (!blob) { showToast(t.recordingFailed); return; }
+    const filename = formatRecordingFilename({ peerName: item.peerName, createdAt: item.createdAt, ext: item.ext });
+    let result = { method: 'failed' };
+    try { result = await saveRecordingToDevice({ blob, filename, mime: item.mime }); } catch { result = { method: 'failed' }; }
+    if (result.method === 'download' || result.method === 'picker') {
+      await markRecordingSaved(item.id);
+      await refreshRecordings();
+      setSavedRecording((current) => current && current.id === item.id ? { ...current, saved: true } : current);
+    }
+    if (result.method === 'failed') showToast(t.recordingFailed);
+    else if (result.method === 'download') showToast(t.recordingSavedMobile);
+  }
+
+  async function shareRecordingItem(item) {
+    const blob = await getRecordingBlob(item.id);
+    if (!blob) { showToast(t.recordingFailed); return; }
+    const filename = formatRecordingFilename({ peerName: item.peerName, createdAt: item.createdAt, ext: item.ext });
+    const result = await shareRecordingFile({ blob, filename, title: `You and Me · ${item.peerName}` });
+    if (result.method === 'unsupported') await saveRecordingItem(item);
+  }
+
+  async function deleteRecordingItem(item) {
+    if (!window.confirm(t.deleteRecordingConfirm)) return;
+    await removeRecordingFromLibrary(item.id);
+    await refreshRecordings();
+    setSavedRecording((current) => current && current.id === item.id ? null : current);
+    showToast(t.recordingDeleted);
+  }
+
   function togglePin(chat) {
     if (!chat || chat.kind === 'saved') return;
     updateChat(chat.id, (current) => ({ ...current, pinned: !current.pinned }));
@@ -1965,6 +2174,18 @@ function App() {
               </button>
             ))}
             {!app.calls.length && <div className="sidebar-empty compact-empty"><Phone size={19} /><small>{t.noCallsHint}</small></div>}
+            <div className="list-heading recordings-heading">
+              <div><span className="eyebrow">{t.recordingsSubtitle}</span><strong>{t.recordingsTitle}</strong></div>
+              <span className="soft-count">{recordings.length}</span>
+            </div>
+            {recordings.slice(0, 3).map((item) => (
+              <button className="mini-history-row" key={item.id} onClick={() => setModal('recordings')}>
+                <span className="mini-recording-thumb"><Film size={14} /></span>
+                <span><strong>{item.peerName}</strong><small>{formatClock(item.durationMs / 1000)} · {formatRecordingSize(item.size)}</small></span>
+                <Download size={15} />
+              </button>
+            ))}
+            <button className="add-contact-wide" onClick={() => setModal('recordings')}><Film size={16} />{t.openRecordings}</button>
           </div>
         )}
 
@@ -2058,7 +2279,7 @@ function App() {
           />
         )}
         {activeTab === 'calls' && (
-          <CallsWorkspace calls={app.calls} t={t} language={language} onOpenPeer={openPeer} onNewChat={() => setModal('new-chat')} onBack={() => setMobileChatOpen(false)} />
+          <CallsWorkspace calls={app.calls} recordings={recordings} t={t} language={language} onOpenPeer={openPeer} onNewChat={() => setModal('new-chat')} onOpenRecordings={() => setModal('recordings')} onBack={() => setMobileChatOpen(false)} />
         )}
         {activeTab === 'contacts' && (
           <ContactsWorkspace
@@ -2164,6 +2385,8 @@ function App() {
           section={settingsSection}
           onSectionChange={setSettingsSection}
           storageUsed={storageUsedBytes}
+          recordingsCount={recordings.length}
+          onOpenRecordings={() => setModal('recordings')}
           onClose={() => setModal('')}
           onSaveProfile={saveProfile}
           onSettings={updateSettings}
@@ -2204,9 +2427,37 @@ function App() {
           onDigit={sendCallDigit}
           onScreenShare={screenSharing ? stopScreenShare : requestScreenShare}
           onSwitchCamera={switchCamera}
+          onRecordScreen={toggleCallScreenRecording}
+          screenRecording={callRecording}
+          screenRecordingSeconds={callRecordingSeconds}
         />
       )}
       {screenSharePrompt && <ScreenSharePrompt t={t} onCancel={() => setScreenSharePrompt(false)} onAllow={allowScreenShare} />}
+      {modal === 'recordings' && (
+        <RecordingsDialog
+          t={t}
+          language={language}
+          recordings={recordings}
+          canShare={canShareRecordings}
+          onClose={() => setModal('')}
+          onSave={saveRecordingItem}
+          onShare={shareRecordingItem}
+          onDelete={deleteRecordingItem}
+          onOpenPeer={(peerId, peerName) => { setModal(''); if (peerId) openPeer(peerId, peerName); }}
+        />
+      )}
+      {savedRecording && !callState && (
+        <RecordingSavedCard
+          t={t}
+          item={savedRecording}
+          busy={savingRecording}
+          canShare={canShareRecordings}
+          onSave={() => saveRecordingItem(savedRecording)}
+          onShare={() => shareRecordingItem(savedRecording)}
+          onViewAll={() => { setSavedRecording(null); setModal('recordings'); }}
+          onClose={() => setSavedRecording(null)}
+        />
+      )}
       {toast && <div className="toast-message" role="status">{toast}</div>}
     </div>
   );
@@ -2776,7 +3027,7 @@ function MessageBubble({ message, own, t, language, onCallPeer }) {
   );
 }
 
-function CallsWorkspace({ calls, t, language, onOpenPeer, onNewChat, onBack }) {
+export function CallsWorkspace({ calls, recordings = [], t, language, onOpenPeer, onNewChat, onOpenRecordings, onBack }) {
   return (
     <section className="workspace-page calls-page">
       <header className="workspace-header">
@@ -2785,6 +3036,14 @@ function CallsWorkspace({ calls, t, language, onOpenPeer, onNewChat, onBack }) {
         <button className="primary-button" onClick={onNewChat}><Plus size={17} />{t.newChat}</button>
       </header>
       <div className="workspace-content">
+        <div className="recordings-strip">
+          <span className="recordings-strip-icon"><Film size={18} /></span>
+          <div className="recordings-strip-copy">
+            <strong>{t.recordingsTitle}{recordings.length ? ` · ${recordings.length}` : ''}</strong>
+            <small>{recordings.length ? t.recordingsHint : t.noRecordingsHint}</small>
+          </div>
+          <button type="button" className="soft-action" onClick={onOpenRecordings}><Film size={15} />{t.openRecordings}</button>
+        </div>
         <div className="content-section-heading"><div><span className="section-icon green-icon"><Phone size={17} /></span><div><h2>{t.callHistory}</h2><p>{calls.length ? `${calls.length} ${t.calls}` : t.noCallsHint}</p></div></div></div>
         {calls.length ? (
           <div className="call-history-list">
@@ -2882,6 +3141,7 @@ function NewChatDialog({ t, identity, onClose, onStart, onCopy }) {
 function SettingsDialog({
   t, app, section, onSectionChange, onClose, onSaveProfile, onSettings, onCopy, onShare,
   onNotify, onImportContacts, onLogout, onClearHistory, onClearAll, storageUsed, onPhotoTooLarge, onPhotoUnsupported,
+  onOpenRecordings, recordingsCount = 0,
 }) {
   const [draft, setDraft] = useState({
     name: app.profile.name,
@@ -2993,6 +3253,7 @@ function SettingsDialog({
               {section === 'data' && <>
                 <div className="storage-meter-card"><div className="storage-meter-icon"><HardDrive size={18} /></div><div className="storage-meter-copy"><strong>{t.storageUsed}</strong><small>{t.dataStorageHint}</small></div><b>{formatBytes(storageUsed)}</b></div>
                 <div className="storage-meter-track"><i style={{ width: `${Math.min(100, Math.max(4, storageUsed / (5 * 1024 * 1024) * 100))}%` }} /></div>
+                <button className="setting-action-row" onClick={onOpenRecordings}><span className="setting-row-icon"><Film size={17} /></span><span><strong>{t.recordingsTitle}</strong><small>{recordingsCount ? `${recordingsCount} saved on this device · ${t.recordingsHint}` : t.noRecordingsHint}</small></span><ChevronLeft size={16} /></button>
                 <button className="setting-action-row" onClick={onClearHistory}><span className="setting-row-icon"><Trash2 size={17} /></span><span><strong>{t.clearHistory}</strong><small>Remove conversations and call history but keep this guest ID.</small></span><ChevronLeft size={16} /></button>
                 <button className="setting-action-row danger-row" onClick={onClearAll}><span className="setting-row-icon"><LogOut size={17} /></span><span><strong>{t.clearAllData}</strong><small>Erase profile, guest ID, messages and settings from this browser.</small></span><ChevronLeft size={16} /></button>
               </>}
@@ -3006,6 +3267,7 @@ function SettingsDialog({
                 <div className="permission-info-card"><span className="permission-info-icon"><Mic size={17} /></span><span><strong>Microphone</strong><small>Your browser asks for access only when you start or answer an audio/video call or record a voice message.</small></span></div>
                 <div className="permission-info-card"><span className="permission-info-icon"><Camera size={17} /></span><span><strong>Camera</strong><small>Your browser asks for access only when you start or answer a video call.</small></span></div>
                 <div className="permission-info-card"><span className="permission-info-icon"><MonitorUp size={17} /></span><span><strong>Screen sharing</strong><small>The screen picker opens only after you choose Share screen during a video call.</small></span></div>
+                <div className="permission-info-card"><span className="permission-info-icon"><Film size={17} /></span><span><strong>Record screen</strong><small>Recording starts only when you tap Record screen during a call. The video file is saved on your own device — nothing is uploaded to a server.</small></span></div>
                 <div className="settings-note"><ShieldCheck size={16} />{t.permissionBeforeUse}</div>
               </>}
 
@@ -3039,9 +3301,9 @@ function SettingsDialog({
   );
 }
 
-function CallOverlay({
+export function CallOverlay({
   call, t, language, onAccept, onDecline, onEnd, onMute, onVideo, onSpeaker, onKeypad, onDigit,
-  onScreenShare, onSwitchCamera,
+  onScreenShare, onSwitchCamera, onRecordScreen, screenRecording, screenRecordingSeconds,
 }) {
   const remoteVideoRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -3063,6 +3325,17 @@ function CallOverlay({
     return () => clearInterval(timer);
   }, [call.startedAt]);
   const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+  const recordButton = (
+    <button
+      className={`call-control utility-control record-control ${screenRecording ? 'record-control-active' : ''}`}
+      onClick={onRecordScreen}
+      title={screenRecording ? t.stopRecording : `${t.recordScreen} — ${t.recordingHint}`}
+      aria-pressed={Boolean(screenRecording)}
+    >
+      <span className="control-round">{screenRecording ? <Square size={16} /> : <Film size={18} />}</span>
+      <span>{screenRecording ? t.stopRecording : t.recordScreen}</span>
+    </button>
+  );
   return (
     <div className={`call-overlay ${call.kind === 'video' ? 'video-call-overlay' : ''}`} role="dialog" aria-modal="true" aria-label={`${call.direction === 'incoming' ? t.incomingCall : t.outgoingCall}: ${call.peerName}`}>
       <section className="call-window">
@@ -3072,6 +3345,14 @@ function CallOverlay({
           {call.kind === 'audio' && <audio ref={remoteAudioRef} autoPlay />}
           {call.kind === 'video' && call.localStream && <div className="local-video-tile"><video ref={localVideoRef} autoPlay playsInline muted />{call.videoOff && <span><VideoOff size={15} /></span>}</div>}
           {call.screenSharing && <div className="screen-sharing-indicator"><MonitorUp size={14} />{t.sharingNow}</div>}
+          {screenRecording && (
+            <div className="call-recording-badge" role="status" aria-live="polite">
+              <span className="rec-live-dot" />
+              <strong>{t.recordingNow}</strong>
+              <span className="rec-live-time">{formatClock(screenRecordingSeconds)}</span>
+              <small>{t.stopRecording}</small>
+            </div>
+          )}
           <div className="call-stage-person"><strong>{call.peerName}</strong><small>{call.kind === 'video' ? t.videoCall : t.audioCall}</small></div>
           {call.keypadOpen && call.kind === 'audio' && <div className="call-keypad">{digits.map((digit) => <button key={digit} onClick={() => onDigit(digit)}>{digit}</button>)}<button className="keypad-close" onClick={onKeypad}>Close</button></div>}
         </div>
@@ -3087,10 +3368,12 @@ function CallOverlay({
               {call.kind === 'audio' && <>
                 <button className={`call-control utility-control ${call.keypadOpen ? 'control-active' : ''}`} onClick={onKeypad} title={t.keypad}><span className="control-round"><Hash size={18} /></span><span>{t.keypad}</span></button>
                 <button className={`call-control utility-control ${!call.speakerOn ? 'control-active' : ''}`} onClick={onSpeaker} title={t.speaker}><span className="control-round"><Speaker size={18} /></span><span>{call.speakerOn ? t.speaker : t.speakerOff}</span></button>
+                {recordButton}
               </>}
               {call.kind === 'video' && <>
                 <button className={`call-control utility-control ${call.videoOff ? 'control-active' : ''}`} onClick={onVideo} title={call.videoOff ? t.cameraOn : t.cameraOff}><span className="control-round">{call.videoOff ? <VideoOff size={18} /> : <Video size={18} />}</span><span>{call.videoOff ? t.cameraOn : t.cameraOff}</span></button>
                 <button className={`call-control utility-control ${call.screenSharing ? 'control-active' : ''}`} onClick={onScreenShare} title={call.screenSharing ? t.stopScreenShare : t.screenShare}><span className="control-round">{call.screenSharing ? <MonitorX size={18} /> : <MonitorUp size={18} />}</span><span>{call.screenSharing ? t.stop : t.screenShare}</span></button>
+                {recordButton}
                 <button className="call-control utility-control" onClick={onSwitchCamera} title={t.switchCamera}><span className="control-round"><Camera size={18} /></span><span>{t.switchCamera}</span></button>
               </>}
               <button className="call-control decline-control" onClick={onEnd} title={t.endCall}><PhoneOff size={20} /><span>{t.endCall}</span></button>
@@ -3112,6 +3395,104 @@ function ScreenSharePrompt({ t, onCancel, onAllow }) {
         <p>{t.screenShareHint}</p>
         <div className="share-prompt-actions"><button className="secondary-button" onClick={onCancel}>{t.cancel}</button><button className="primary-button" onClick={onAllow}><MonitorUp size={15} />{t.allow}</button></div>
       </section>
+    </div>
+  );
+}
+
+function formatRecordingSize(bytes) {
+  if (!bytes) return '0 KB';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function RecordingsDialog({ t, language, recordings, canShare, onClose, onSave, onShare, onDelete, onOpenPeer }) {
+  const [previewId, setPreviewId] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [busyId, setBusyId] = useState('');
+  const urlRef = useRef('');
+
+  function closePreview() {
+    if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = ''; }
+    setPreviewUrl('');
+    setPreviewId('');
+  }
+
+  useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current); }, []);
+
+  async function togglePreview(item) {
+    if (previewId === item.id) { closePreview(); return; }
+    closePreview();
+    const blob = await getRecordingBlob(item.id);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    urlRef.current = url;
+    setPreviewUrl(url);
+    setPreviewId(item.id);
+  }
+
+  async function run(id, action) {
+    setBusyId(id);
+    try { await action(); } finally { setBusyId(''); }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="dialog-card recordings-dialog" role="dialog" aria-modal="true" aria-label={t.recordingsTitle}>
+        <button type="button" className="dialog-close" onClick={onClose} aria-label={t.close}><X size={18} /></button>
+        <div className="dialog-icon green-icon"><Film size={21} /></div>
+        <span className="eyebrow">{t.recordingsSubtitle}</span>
+        <h2>{t.recordingsTitle}</h2>
+        <p>{t.recordingsHint}</p>
+        <div className="recordings-scroll">
+          {recordings.length ? recordings.map((item) => (
+            <article className="recording-card" key={item.id}>
+              <div className="recording-thumb">
+                {previewId === item.id && previewUrl ? (
+                  <video className="recording-preview" src={previewUrl} controls autoPlay playsInline />
+                ) : (
+                  <button type="button" className="recording-play" onClick={() => togglePreview(item)} aria-label={`${t.recordingsTitle}: ${item.peerName}`}><Play size={19} /></button>
+                )}
+                <span className="recording-length">{formatClock(item.durationMs / 1000)}</span>
+              </div>
+              <div className="recording-copy">
+                <strong>{item.peerName}</strong>
+                <small>{formatDay(item.createdAt, language)} · {formatTime(item.createdAt, language)} · {formatRecordingSize(item.size)} · {(item.ext || 'webm').toUpperCase()}</small>
+                <span className={`recording-state ${item.savedToDevice ? 'state-saved' : ''}`}>
+                  {item.savedToDevice ? <><Download size={12} />{t.savedToFiles}</> : <><Smartphone size={12} />{t.localOnly}</>}
+                </span>
+              </div>
+              <div className="recording-actions">
+                <button type="button" className="soft-action" disabled={busyId === item.id} onClick={() => run(item.id, () => onSave(item))}><Download size={15} />{t.saveToFiles}</button>
+                {canShare && <button type="button" className="soft-action" disabled={busyId === item.id} onClick={() => run(item.id, () => onShare(item))}><Share2 size={15} />{t.shareRecording}</button>}
+                {item.peerId && <button type="button" className="soft-action" onClick={() => onOpenPeer(item.peerId, item.peerName)}><MessageCircle size={15} />{t.message}</button>}
+                <button type="button" className="recording-delete" disabled={busyId === item.id} onClick={() => run(item.id, () => onDelete(item))} aria-label={t.deleteRecording} title={t.deleteRecording}><Trash2 size={15} /></button>
+              </div>
+            </article>
+          )) : (
+            <div className="recordings-empty"><Film size={24} /><strong>{t.noRecordings}</strong><small>{t.noRecordingsHint}</small></div>
+          )}
+        </div>
+        <div className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>{t.close}</button></div>
+      </section>
+    </div>
+  );
+}
+
+export function RecordingSavedCard({ t, item, busy, canShare, onSave, onShare, onViewAll, onClose }) {
+  return (
+    <div className="recording-saved-card" role="status">
+      <div className="recording-saved-icon"><Film size={19} /></div>
+      <div className="recording-saved-copy">
+        <strong>{t.recordingSavedTitle}</strong>
+        <p>{item.peerName} · {formatClock(item.durationMs / 1000)} · {formatRecordingSize(item.size)}</p>
+        <small>{item.saved ? t.recordingSavedMobile : t.recordingSavedBody}</small>
+      </div>
+      <div className="recording-saved-actions">
+        <button type="button" className="rec-saved-primary" disabled={busy} onClick={onSave}><Download size={15} />{t.saveToFiles}</button>
+        {canShare && <button type="button" className="rec-saved-ghost" onClick={onShare} aria-label={t.shareRecording} title={t.shareRecording}><Share2 size={15} /></button>}
+        <button type="button" className="rec-saved-ghost" onClick={onViewAll} aria-label={t.viewRecordings} title={t.viewRecordings}><Film size={15} /></button>
+        <button type="button" className="rec-saved-close" onClick={onClose} aria-label={t.dismiss} title={t.dismiss}><X size={15} /></button>
+      </div>
     </div>
   );
 }
