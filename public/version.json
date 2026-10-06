@@ -1,0 +1,6 @@
+{
+  "app": "You and Me",
+  "version": "1.1.0",
+  "build": "call-screen-recording",
+  "features": ["record-screen-during-call", "recordings-saved-to-device", "recordings-library"]
+}
