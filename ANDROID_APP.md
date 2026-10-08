@@ -6,28 +6,34 @@
 
 ---
 
-## APK ফাইল কীভাবে পাবেন (২ ভাবে)
+## APK ফাইল কীভাবে পাবেন (৩ ভাবে)
 
-### উপায় ১: GitHub-এ ম্যানুয়ালি রান করুন (সবচেয়ে সহজ)
+### উপায় ১: রেডিমেড Release থেকে ডাউনলোড করুন
+
+রিপোর **Releases** সেকশনে যান → সর্বশেষ রিলিজ (যেমন [`v1.1.0`](https://github.com/mdreanislam01-ai/Tonni/releases/tag/v1.1.0)) → `Tonni-x.x.x-release.apk` ডাউনলোড করে ফোনে ইনস্টল করুন।
+
+### উপায় ২: GitHub-এ ম্যানুয়ালি রান করুন
 
 1. GitHub-এ এই রিপোর **Actions** ট্যাবে যান।
 2. বাম পাশের তালিকা থেকে **Build Android APK** সিলেক্ট করুন।
 3. ডান পাশে **Run workflow** বাটনে ক্লিক করুন।
 4. ইচ্ছা হলে ইনপুট দিন (না দিলেও ডিফল্ট দিয়েই চলবে):
    - **server_url** — আপনার চালু সার্ভারের URL (যেমন `https://tonni.rmfbd.online`)। APK এই সার্ভারের সাথে কানেক্ট হবে।
-   - **version_name / version_code** — অ্যাপের ভার্সন (ডিফল্ট: `package.json` থেকে / GitHub run number)।
+   - **version_name** — খালি রাখলে ট্যাগ বা `package.json` থেকে নেয়।
+   - **version_code** — খালি রাখলে GitHub রান নম্বর (অটো বাড়ে)।
    - **build_type** — `release` (ডিফল্ট) বা `debug`।
 5. **Run workflow** → কয়েক মিনিট অপেক্ষা করুন।
 6. রান শেষ হলে সেই রানের পেজের নিচে **Artifacts** সেকশনে **Tonni-APK** দেখাবে → ডাউনলোড করে ফোনে ইনস্টল করুন।
 
-### উপায় ২: নতুন ট্যাগ দিলে অটো বিল্ড + Release
+### উপায় ৩: অটোমেটিক বিল্ড
+
+- `main`, `arena/**`, `feature/**` ব্রাঞ্চে কোড পুশ করলেই বিল্ড চলে (ডকুমেন্টেশন-ফাইল `.md` বাদে) — রান শেষে সেই রানের Artifacts-এ APK পাওয়া যায়।
+- নতুন **`v*` ট্যাগ** দিলে বিল্ড হয়ে APK সোজা একটি GitHub Release-এ ঝুলে যায়:
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
-
-বিল্ড শেষ হলে APK ফাইলটি রিপোর **Releases** সেকশনে ঝুলে যাবে — সেখান থেকে যে কেউ ডাউনলোড করতে পারবে।
 
 ---
 
@@ -94,5 +100,5 @@ cd android && ./gradlew assembleDebug   # android/app/build/outputs/apk/debug/
 
 - প্যাকেজ আইডি: `online.rmfbd.tonni` · অ্যাপের নাম: **Tonni** (`capacitor.config.json` / `android/` এ পরিবর্তনযোগ্য)
 - minSdk 22 (Android 5.1+) · targetSdk 34
-- Workflow ফাইল: `.github/workflows/build-apk.yml`
+- Workflow ফাইল: `.github/workflows/build-apk.yml` — প্রথম টেস্ট বিল্ড সফল: [release v1.1.0](https://github.com/mdreanislam01-ai/Tonni/releases/tag/v1.1.0) (`Tonni-1.1.0-release.apk`)
 - ওয়েব বান্ডল বদলালেই যথেষ্ট — workflow প্রতিবার `npx cap sync android` চালিয়ে সদ্য বিল্ড করা ওয়েব UI করে APK-তে ঢোকায়
