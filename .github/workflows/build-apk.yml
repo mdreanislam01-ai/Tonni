@@ -40,7 +40,10 @@ on:
           - release
           - debug
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'arena/**'
+      - 'feature/**'
     tags: ["v*"]
     paths:
       - "src/**"
