@@ -203,9 +203,12 @@ jobs:
           APK=$(ls apk/*.apk | head -n 1)
 
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # Triggered by a v* tag push: the tag already exists.
             TAG="${GITHUB_REF_NAME}"
+            TARGET_ARGS=(--verify-tag)
           else
             TAG="apk-${GITHUB_RUN_NUMBER}"
+            TARGET_ARGS=(--target "${GITHUB_SHA}")
           fi
 
           NOTES=$(mktemp)
@@ -223,7 +226,7 @@ jobs:
             gh release upload "${TAG}" "${APK}" --clobber
           else
             gh release create "${TAG}" "${APK}" \
-              --target "${GITHUB_SHA}" \
+              "${TARGET_ARGS[@]}" \
               --title "Tonni ${VERSION} (Android APK)" \
               --notes-file "${NOTES}" \
               --prerelease
