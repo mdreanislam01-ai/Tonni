@@ -19,6 +19,8 @@ on:
       - main
       - 'arena/**'
       - 'feature/**'
+    tags:
+      - 'v*'
     paths-ignore:
       - '**.md'
   pull_request:
