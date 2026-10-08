@@ -398,6 +398,33 @@ function BrandMark({ small = false }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Native (Capacitor) shell support
+// ---------------------------------------------------------------------------
+// The installed Android/iOS app is served from the bundle at https://localhost,
+// so a same-origin Socket.IO connection is impossible — it needs an absolute
+// server URL. Precedence: ?backend=… → window.__SOCKET_URL__ → the URL saved in
+// Settings → VITE_SOCKET_URL at build time → NATIVE_DEFAULT_SOCKET_URL.
+const NATIVE_DEFAULT_SOCKET_URL = 'https://tonni.rmfbd.online';
+
+function isNativeShell() {
+  if (typeof window === 'undefined') return false;
+  const capacitor = window.Capacitor;
+  if (capacitor) {
+    if (typeof capacitor.isNativePlatform === 'function') return capacitor.isNativePlatform() === true;
+    if (capacitor.platform) return capacitor.platform !== 'web';
+  }
+  return window.location.protocol === 'capacitor:' || window.location.protocol === 'file:';
+}
+
+function readSavedBackendUrl() {
+  try {
+    return localStorage.getItem('ym_backend_url') || '';
+  } catch {
+    return '';
+  }
+}
+
 function App() {
   const [routeIntent] = useState(readRouteIntent);
   const [app, setApp] = useState(() => {
@@ -429,6 +456,7 @@ function App() {
 
   // Register Service Worker for Background Web Push & PWA
   useEffect(() => {
+    if (isNativeShell()) return undefined; // the native shell has no service worker / web push
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').then((reg) => {
         // Auto subscribe if permission is already granted
@@ -439,6 +467,7 @@ function App() {
         console.warn('SW register error:', err);
       });
     }
+    return undefined;
   }, []);
 
   async function subscribeToPush(socket = socketRef.current, force = false, settingsOverride = null) {
@@ -1028,9 +1057,12 @@ function App() {
   useEffect(() => {
     const envSocketUrl = import.meta.env.VITE_SOCKET_URL;
     const runtimeSocketUrl = typeof window !== 'undefined'
-      ? (new URLSearchParams(window.location.search).get('backend') || window.__SOCKET_URL__ || localStorage.getItem('ym_backend_url'))
+      ? (new URLSearchParams(window.location.search).get('backend') || window.__SOCKET_URL__ || readSavedBackendUrl())
       : null;
-    const targetUrl = envSocketUrl || runtimeSocketUrl || undefined;
+    // In the bundled app there is no same-origin server to talk to, so fall
+    // back to the configured backend instead of staying offline.
+    const nativeSocketUrl = isNativeShell() && !runtimeSocketUrl ? NATIVE_DEFAULT_SOCKET_URL : null;
+    const targetUrl = envSocketUrl || runtimeSocketUrl || nativeSocketUrl || undefined;
 
     const socket = targetUrl
       ? io(targetUrl, { autoConnect: false, reconnection: true, timeout: 8000, transports: ['websocket', 'polling'] })
@@ -1235,6 +1267,41 @@ function App() {
     incomingNotificationRef.current?.close?.();
     notificationAudioRef.current?.close?.().catch?.(() => {});
   }, []);
+
+  // Android hardware/gesture back: close whatever surface is on top before the
+  // native activity is allowed to close the app (see MainActivity.java).
+  const nativeBackRef = useRef(null);
+  nativeBackRef.current = () => {
+    if (callState) return false;
+    if (modal) { setModal(''); return true; }
+    if (detailsOpen) { setDetailsOpen(false); return true; }
+    if (globalSearchOpen) { setGlobalSearchOpen(false); return true; }
+    if (emojiOpen) { setEmojiOpen(false); return true; }
+    if (activeTab === 'chats' && mobileChatOpen) { setMobileChatOpen(false); return true; }
+    if (activeTab !== 'home') { setActiveTab('home'); return true; }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!isNativeShell()) return undefined;
+    const handleNativeBack = () => {
+      window.__tonniBackHandled = nativeBackRef.current?.() === true;
+    };
+    window.addEventListener('tonni:back', handleNativeBack);
+    return () => window.removeEventListener('tonni:back', handleNativeBack);
+  }, []);
+
+  function saveBackendUrl(url) {
+    const clean = String(url || '').trim().replace(/\/+$/, '');
+    try {
+      if (clean) localStorage.setItem('ym_backend_url', clean);
+      else localStorage.removeItem('ym_backend_url');
+    } catch {
+      // storage unavailable: the build-time default still applies
+    }
+    setToast(clean ? `Server set to ${clean}` : 'Server reset to default');
+    window.setTimeout(() => window.location.reload(), 350);
+  }
 
   function updateSettings(partial) {
     setApp((current) => ({ ...current, settings: { ...current.settings, ...partial } }));
@@ -2212,7 +2279,7 @@ function App() {
       width: result.width,
       height: result.height,
       blob: result.blob,
-      savedToDevice: saveResult.method === 'download' || saveResult.method === 'picker',
+      savedToDevice: ['download', 'picker', 'native'].includes(saveResult.method),
     };
     await addRecordingToLibrary(entry);
     await refreshRecordings();
@@ -2239,12 +2306,13 @@ function App() {
     const filename = formatRecordingFilename({ peerName: item.peerName, createdAt: item.createdAt, ext: item.ext });
     let result = { method: 'failed' };
     try { result = await saveRecordingToDevice({ blob, filename, mime: item.mime }); } catch { result = { method: 'failed' }; }
-    if (result.method === 'download' || result.method === 'picker') {
+    if (['download', 'picker', 'native'].includes(result.method)) {
       await markRecordingSaved(item.id);
       await refreshRecordings();
       setSavedRecording((current) => current && current.id === item.id ? { ...current, saved: true } : current);
     }
     if (result.method === 'failed') showToast(t.recordingFailed);
+    else if (result.method === 'native') showToast(`Saved to ${result.path || 'Downloads/Tonni'}`);
     else if (result.method === 'download') showToast(t.recordingSavedMobile);
   }
 
@@ -2678,6 +2746,9 @@ function App() {
           onShare={shareInvite}
           onImportContacts={importContacts}
           onLogout={logoutGuest}
+          nativeShell={isNativeShell()}
+          serverUrl={readSavedBackendUrl()}
+          onSaveServerUrl={saveBackendUrl}
           onClearHistory={() => {
             if (!window.confirm('Clear all local conversations and call history?')) return;
             setApp((current) => ({ ...current, chats: [makeSavedChat()], calls: [] }));
@@ -3527,8 +3598,9 @@ function NewChatDialog({ t, identity, onClose, onStart, onCopy }) {
 function SettingsDialog({
   t, app, section, onSectionChange, onClose, onSaveProfile, onSettings, onCopy, onShare,
   onNotify, onImportContacts, onLogout, onClearHistory, onClearAll, storageUsed, onPhotoTooLarge, onPhotoUnsupported,
-  onOpenRecordings, recordingsCount = 0,
+  onOpenRecordings, recordingsCount = 0, nativeShell = false, serverUrl = '', onSaveServerUrl,
 }) {
+  const [serverDraft, setServerDraft] = useState(serverUrl);
   const [draft, setDraft] = useState({
     name: app.profile.name,
     username: app.profile.username || '',
@@ -3642,6 +3714,26 @@ function SettingsDialog({
                 <button className="setting-action-row" onClick={onOpenRecordings}><span className="setting-row-icon"><Film size={17} /></span><span><strong>{t.recordingsTitle}</strong><small>{recordingsCount ? `${recordingsCount} saved on this device · ${t.recordingsHint}` : t.noRecordingsHint}</small></span><ChevronLeft size={16} /></button>
                 <button className="setting-action-row" onClick={onClearHistory}><span className="setting-row-icon"><Trash2 size={17} /></span><span><strong>{t.clearHistory}</strong><small>Remove conversations and call history but keep this guest ID.</small></span><ChevronLeft size={16} /></button>
                 <button className="setting-action-row danger-row" onClick={onClearAll}><span className="setting-row-icon"><LogOut size={17} /></span><span><strong>{t.clearAllData}</strong><small>Erase profile, guest ID, messages and settings from this browser.</small></span><ChevronLeft size={16} /></button>
+                {nativeShell && <>
+                  <label className="field-label">Server URL</label>
+                  <input
+                    className="text-field"
+                    value={serverDraft}
+                    onChange={(event) => setServerDraft(event.target.value)}
+                    placeholder={NATIVE_DEFAULT_SOCKET_URL}
+                    inputMode="url"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <p className="field-helper">The installed app connects to this Socket.IO server for chat, presence and calls. Leave it empty to use {NATIVE_DEFAULT_SOCKET_URL}.</p>
+                  <div className="account-id-row">
+                    <span><small>Current server</small><strong>{serverUrl || NATIVE_DEFAULT_SOCKET_URL}</strong></span>
+                    <div>
+                      <button className="small-copy-button" onClick={() => onCopy?.(serverUrl || NATIVE_DEFAULT_SOCKET_URL)} aria-label={t.copyId}><Copy size={16} /></button>
+                      <button className="secondary-button" onClick={() => onSaveServerUrl?.(serverDraft)}>Save &amp; reconnect</button>
+                    </div>
+                  </div>
+                </>}
               </>}
 
               {section === 'appearance' && <>

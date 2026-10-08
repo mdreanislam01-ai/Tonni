@@ -1,6 +1,6 @@
 {
   "name": "you-and-me",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "A no-sign-up, guest-first messaging and calling app.",
@@ -8,9 +8,14 @@
     "dev": "node server.js",
     "build": "vite build",
     "start": "NODE_ENV=production node server.js",
+    "android:assets": "node scripts/generate-android-assets.mjs",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
     "test": "node scripts/call-recorder.test.mjs && node scripts/call-screen-share.test.mjs && node scripts/background-chat.test.mjs && node scripts/call-ui.test.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "@vitejs/plugin-react": "^4.4.1",
     "express": "^4.21.2",
     "lucide-react": "^0.468.0",
@@ -20,5 +25,8 @@
     "socket.io-client": "^4.8.1",
     "vite": "^6.1.0",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
   }
 }
