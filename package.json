@@ -8,9 +8,15 @@
     "dev": "node server.js",
     "build": "vite build",
     "start": "NODE_ENV=production node server.js",
-    "test": "node scripts/call-recorder.test.mjs && node scripts/call-screen-share.test.mjs && node scripts/background-chat.test.mjs && node scripts/call-ui.test.mjs"
+    "test": "node scripts/call-recorder.test.mjs && node scripts/call-screen-share.test.mjs && node scripts/background-chat.test.mjs && node scripts/call-ui.test.mjs",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "6.2.1",
+    "@capacitor/core": "6.2.1",
+    "@capacitor/filesystem": "6.0.2",
+    "@capacitor/share": "6.0.3",
     "@vitejs/plugin-react": "^4.4.1",
     "express": "^4.21.2",
     "lucide-react": "^0.468.0",
@@ -20,5 +26,9 @@
     "socket.io-client": "^4.8.1",
     "vite": "^6.1.0",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "6.2.1",
+    "sharp": "0.34.4"
   }
 }

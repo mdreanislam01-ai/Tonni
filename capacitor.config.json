@@ -1,0 +1,19 @@
+{
+  "appId": "online.rmfbd.tonni",
+  "appName": "Tonni",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  },
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": ["*.rmfbd.online", "*.onrender.com"]
+  }
+}

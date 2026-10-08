@@ -1,0 +1,181 @@
+name: Build Android APK
+
+# Builds the Tonni Android app (Capacitor WebView wrapper around the React UI).
+#
+# Server URL: the APK bundles the web UI and connects to your Socket.IO server.
+# Priority: workflow input "server_url" → repository variable TONNI_SERVER_URL
+#           → default https://tonni.rmfbd.online
+# Set the variable once under Repo → Settings → Secrets and variables → Actions
+# → Variables, or just type a URL when running the workflow manually.
+#
+# Release signing (optional): add these repository secrets to sign a release
+# APK with your own keystore. Without them the APK is signed with the debug
+# key, which still installs fine on any device:
+#   KEYSTORE_BASE64      base64 of your .keystore/.jks file
+#   KEYSTORE_PASSWORD    keystore password
+#   KEYSTORE_ALIAS       key alias
+#   KEYSTORE_KEY_PASSWORD key password (defaults to KEYSTORE_PASSWORD)
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: "Socket.IO server URL baked into the APK (VITE_SOCKET_URL)"
+        required: false
+        default: ""
+      version_name:
+        description: "Android versionName (empty = version from tag or package.json)"
+        required: false
+        default: ""
+      version_code:
+        description: "Android versionCode (empty = GitHub run number, auto-increments)"
+        required: false
+        default: ""
+      build_type:
+        description: "Gradle build type"
+        required: false
+        default: "release"
+        type: choice
+        options:
+          - release
+          - debug
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.json"
+      - "android/**"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Resolve app version
+        id: version
+        run: |
+          VN="${{ inputs.version_name }}"
+          VC="${{ inputs.version_code }}"
+          if [ -z "$VN" ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then VN="${GITHUB_REF#refs/tags/v}"; fi
+          [ -z "$VN" ] && VN="$(node -p "require('./package.json').version")"
+          [ -z "$VC" ] && VC="${{ github.run_number }}"
+          TYPE="${{ inputs.build_type }}"
+          [ -z "$TYPE" ] && TYPE="release"
+          {
+            echo "name=$VN"
+            echo "code=$VC"
+            echo "type=$TYPE"
+          } >> "$GITHUB_OUTPUT"
+          echo "versionName=$VN versionCode=$VC type=$TYPE"
+
+      - name: Resolve server URL
+        id: server
+        run: |
+          URL="${{ inputs.server_url }}"
+          [ -z "$URL" ] && URL="${{ vars.TONNI_SERVER_URL }}"
+          [ -z "$URL" ] && URL="https://tonni.rmfbd.online"
+          echo "Baking server URL into APK: $URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Build web bundle
+        env:
+          VITE_SOCKET_URL: ${{ steps.server.outputs.url }}
+        run: npm run build
+
+      - name: Sync web bundle into Android project
+        run: npx cap sync android
+
+      - name: Decode release keystore (if provided)
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/tonni-release.jks" >> "$GITHUB_ENV"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/tonni-release.jks"
+
+      - name: Gradle wrap (make executable)
+        run: chmod +x android/gradlew
+
+      - name: Build APK
+        env:
+          KEYSTORE_FILE: ${{ env.KEYSTORE_FILE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          KEYSTORE_KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
+        working-directory: android
+        run: >
+          ./gradlew assemble${{ steps.version.outputs.type }}
+          -PversionCode="${{ steps.version.outputs.code }}"
+          -PversionName="${{ steps.version.outputs.name }}"
+          --stacktrace
+
+      - name: Rename APK
+        id: apk
+        run: |
+          TYPE="${{ steps.version.outputs.type }}"
+          VERSION="${{ steps.version.outputs.name }}"
+          SOURCE="android/app/build/outputs/apk/${TYPE}/app-${TYPE}.apk"
+          TARGET="Tonni-${VERSION}-${TYPE}.apk"
+          cp "$SOURCE" "$TARGET"
+          SHA=$(sha256sum "$TARGET" | cut -d' ' -f1)
+          {
+            echo "path=$TARGET"
+            echo "sha256=$SHA"
+          } >> "$GITHUB_OUTPUT"
+          ls -lh "$TARGET"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tonni-APK
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+      - name: Attach APK to release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.apk.outputs.path }}
+          body: |
+            Tonni Android APK
+
+            - Version: ${{ steps.version.outputs.name }} (versionCode ${{ steps.version.outputs.code }})
+            - Server: ${{ steps.server.outputs.url }}
+            - SHA-256: `${{ steps.apk.outputs.sha256 }}`

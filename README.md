@@ -2,6 +2,10 @@
 
 A guest-first messaging and calling web app. This repository contains the **single application** (React UI, Node/Socket.IO server, and WebRTC call signaling); it does not create or depend on separate projects.
 
+## Android app (APK)
+
+An Android APK is built automatically with **GitHub Actions** — no Android Studio needed. Go to **Actions → Build Android APK → Run workflow**, and download the `Tonni-APK` artifact when it finishes. Details (server URL, signing, features): [ANDROID_APP.md](ANDROID_APP.md).
+
 ## Run it
 
 ```bash
