@@ -10,7 +10,7 @@ Set these in the **server/deployment** environment (for example, the Render serv
 
 | Variable | Required | Value |
 | --- | --- | --- |
-| `WHATSAPP_ACCESS_TOKEN` | Yes | Long-lived System User access token with `whatsapp_business_messaging` and `whatsapp_business_management` access to this WABA/phone number. Keep server-side. |
+| `WHATSAPP_ACCESS_TOKEN` | Yes | Long-lived System User access token with `business_management`, `whatsapp_business_messaging`, and `whatsapp_business_management` access to this WABA/phone number. Keep server-side. |
 | `WHATSAPP_PHONE_NUMBER_ID` | Yes | Meta's **Phone Number ID** for the registered `+8801890047742` number. This is not the phone number itself. |
 | `WHATSAPP_APP_SECRET` | Yes | App Secret from Meta App Dashboard → App settings → Basic. Used to validate `X-Hub-Signature-256`. |
 | `WHATSAPP_VERIFY_TOKEN` | Yes | A strong random string you choose. Enter the exact same value in Meta's webhook verification form. |
@@ -29,7 +29,7 @@ Copy `.env.example` as a checklist; replace every placeholder in the deployment 
 
 1. In [Meta for Developers](https://developers.facebook.com/), use a Business app and add the **WhatsApp** product. In WhatsApp API Setup, add/register the business phone number **`+8801890047742`** in the intended WhatsApp Business Account. Complete Meta's phone-number verification and business requirements. If the number is currently on the WhatsApp Business app, use Meta's supported migration/coexistence path if eligible; do not use QR/session tools.
 2. From the WhatsApp API Setup page, copy the **Phone Number ID** and **WhatsApp Business Account ID** into the server environment. Confirm that the Phone Number ID belongs to `+8801890047742` before enabling sends.
-3. In Meta Business Settings, create a System User, assign the Meta app and this WhatsApp account/phone number, and generate a server-side token with `whatsapp_business_messaging` and `whatsapp_business_management` for this WABA. The server checks that the configured Phone Number ID really resolves to `+8801890047742` before sending/calling. Use the non-expiring/long-lived production token flow recommended by Meta; do not use the temporary getting-started token for production.
+3. In Meta Business Settings, create a System User, assign the Meta app and this WhatsApp account/phone number, and generate a server-side token with `business_management`, `whatsapp_business_messaging`, and `whatsapp_business_management` for this WABA. The server checks that the configured Phone Number ID really resolves to `+8801890047742` before sending/calling. Use the non-expiring/long-lived production token flow recommended by Meta; do not use the temporary getting-started token for production.
 4. Copy the app's **App Secret** from App settings → Basic to `WHATSAPP_APP_SECRET`. Create a separate random `WHATSAPP_VERIFY_TOKEN` and set that same value in both Meta and the server.
 5. In Meta App Dashboard → **Webhooks**, choose the WhatsApp Business Account object and set the callback URL to:
 
