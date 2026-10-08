@@ -6,5 +6,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     allowedHosts: true,
+    fs: {
+      deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/data/whatsapp-inbox.json', '**/data/whatsapp-inbox.json.*'],
+    },
   },
 });

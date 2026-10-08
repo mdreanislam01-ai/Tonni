@@ -7,6 +7,7 @@ import express from 'express';
 import webpush from 'web-push';
 import { Server as SocketServer } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
+import { createWhatsappIntegration } from './server/whatsapp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isProduction = process.env.NODE_ENV === 'production';
@@ -19,11 +20,19 @@ const APP_VERSION = (() => {
   }
 })();
 const app = express();
+// Render and the Arena preview terminate TLS at one trusted reverse proxy.
+app.set('trust proxy', 1);
 const httpServer = http.createServer(app);
 const io = new SocketServer(httpServer, {
   maxHttpBufferSize: 2_000_000,
   cors: { origin: true, credentials: true },
 });
+app.use(express.json({
+  limit: '3mb',
+  verify(req, _res, buffer) {
+    if (req.originalUrl?.startsWith('/api/whatsapp/webhook')) req.rawBody = Buffer.from(buffer);
+  },
+}));
 
 // Profile persistence store
 const dataDir = path.join(__dirname, 'data');
@@ -33,6 +42,13 @@ try {
 } catch {
   // directory creation fallback
 }
+
+const whatsappIntegration = createWhatsappIntegration({
+  app,
+  io,
+  storagePath: process.env.WHATSAPP_DATA_PATH || path.join(dataDir, 'whatsapp-inbox.json'),
+  env: process.env,
+});
 
 const registeredProfiles = new Map(); // id -> profile
 
@@ -631,6 +647,15 @@ io.on('connection', (socket) => {
       }
     }
   });
+});
+
+// WhatsApp conversations are private server-side data. Do not let the Vite
+// development file server expose the default data/ JSON path (including /@fs URLs).
+app.use((req, res, next) => {
+  let requestPath = req.path || '';
+  try { requestPath = decodeURIComponent(requestPath); } catch { return res.sendStatus(400); }
+  if (/(?:^|\/)data\/whatsapp-inbox\.json(?:\.|$)/i.test(requestPath)) return res.sendStatus(404);
+  next();
 });
 
 if (isProduction) {
