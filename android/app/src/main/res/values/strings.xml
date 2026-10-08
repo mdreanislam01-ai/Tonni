@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tonni</string>
+    <string name="title_activity_main">Tonni</string>
+    <string name="package_name">online.rmfbd.tonni</string>
+    <string name="custom_url_scheme">online.rmfbd.tonni</string>
+</resources>

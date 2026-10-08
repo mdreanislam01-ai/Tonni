@@ -52,6 +52,46 @@ Render.com ফ্রিতে Node.js এবং WebSocket সমর্থন ক
 
 ---
 
+## Android অ্যাপ (APK) — ইনস্টল ও সার্ভার কনফিগার
+
+এই রিপোজিটরির সাথেই একটি **Installer Android অ্যাপ** আছে (Capacitor শেল + Vite বান্ডল)। ওয়েবসাইটের UI-ই ভিতরে চলে, শুধু নিচের নেটিভ ফিচারগুলো যোগ হয়েছে: হার্ডওয়্যার ব্যাক বাটন, `Downloads/Tonni/` ফোল্ডারে রেকর্ডিং সেভ, লঞ্চার আইকন ও স্প্ল্যাশ স্ক্রিন।
+
+### APK কোথায় পাবেন
+
+1. GitHub-এ রিপোজিটরি খুলে **Actions → Build Android APK** ট্যাবে যান।
+2. সর্বশেষ সফল (✅) রানের ভিতরে **Artifacts** থেকে `tonni-debug-apk` ডাউনলোড করুন → ZIP খুললে `Tonni-1.2.0-debug.apk` পাবেন।
+3. অথবা **Releases** পেজে `v*` ট্যাগের রিলিজ থেকে APK সরাসরি ডাউনলোড করুন (ব্রাউজারে সবচেয়ে সহজ)।
+4. ফোনে APK ট্যাপ করে ইনস্টল করুন; "Install unknown apps" অনুমতি দিতে হবে।
+
+> এটি **debug** কী দিয়ে সাইন করা — টেস্ট ও সাইডলোডের জন্য। Google Play-তে দেওয়ার আগে নিজের release keystore যোগ করুন।
+
+### অ্যাপে সার্ভার (Socket.IO) সেট করা — খুব গুরুত্বপূর্ণ
+
+ব্রাউজারে অ্যাপটি নিজের ডোমেন থেকেই সার্ভারে যায়, কিন্তু ইনস্টল করা অ্যাপ `https://localhost` থেকে চলে — তাই তাকে **সম্পূর্ণ HTTPS সার্ভার URL** দিতে হয়। অ্যাপে URL যেভাবে ঠিক হয় (প্রথমটি আগে):
+
+1. `?backend=https://...` কুয়েরি প্যারামিটার,
+2. অ্যাপের ভিতরে সেভ করা URL — **Settings → Data & Storage → Server URL**,
+3. বিল্ডের সময়ের `VITE_SOCKET_URL` (ওয়ার্কফ্লোতে রিপোজিটরি variable `VITE_SOCKET_URL` বা `backend_url` ইনপুট),
+4. ডিফল্ট: `https://tonni.rmfbd.online`।
+
+যদি অ্যাপে চ্যাট "offline" দেখায়: **Settings → Data & Storage → Server URL** এ আপনার Render/Node HTTPS ব্যাকএন্ডের URL বসিয়ে **Save & reconnect** চাপুন — অ্যাপ রিলোড হয়ে কানেক্ট হবে। মনে রাখবেন, Vercel-এর মতো static হোস্টে Socket.IO চলবে না (কারণ উপরের সেকশনে ব্যাখ্যা করা হয়েছে)।
+
+### নতুন APK বিল্ড করা (লোকালি)
+
+```bash
+npm ci
+npm run android:sync    # vite build + বান্ডল android/ এ কপি
+npm run android:apk     # -> android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+প্রয়োজন: JDK 21 এবং Android SDK (platform 36, build-tools 36.0.0)। আইকন/স্প্ল্যাশ বদলাতে চাইলে `public/icon-512.png` বদলে `npm run android:assets` চালান — বাকিটা অটো জেনারেট হয়।
+
+### ওয়ার্কফ্লো কী করে
+
+`.github/workflows/android-apk.yml` প্রতিবার `main`/`arena/**`/`feature/**` ব্রাঞ্চে পুশ হলে (শুধু `.md` বাদে) চলে: টেস্ট → `vite build` → আইকন জেনারেট → `cap sync` → `assembleDebug` → APK আর্টিফ্যাক্ট আপলোড। `v1.2.0`-এর মতো ট্যাগ পুশ করলে, বা ম্যানুয়াল রানে `publish_release: true` দিলে, APK সরাসরি GitHub Release-এও যুক্ত হয়।
+
+---
+
 ## Record screen (কল রেকর্ড) — যেভাবে কাজ করে
 
 **কোথায় পাবেন:** ভিডিও বা অডিও কল চলার সময় নিচের কন্ট্রোল বারে `Record screen` বাটন (🎞 Film আইকন)।

@@ -558,14 +558,54 @@ function drawHud(ctx, width, height, peerName, elapsedSeconds, connected) {
 // ---------------------------------------------------------------------------
 
 /**
- * Write a recording to the device. On phones the anchor download lands directly
- * in the Download folder; on desktop browsers that support the File System
- * Access API the user can choose where to keep it.
+ * Address of the loopback file receiver that the Android shell exposes. A
+ * WebView has no download manager, so blob downloads are a no-op there; the
+ * native side hands the page a local endpoint that streams files into the
+ * phone's Download folder instead.
+ */
+function nativeSaveEndpoint() {
+  if (typeof window === 'undefined') return '';
+  try {
+    const endpoint = window.TonniNative?.saveEndpoint?.();
+    return typeof endpoint === 'string' ? endpoint : '';
+  } catch {
+    return '';
+  }
+}
+
+async function postRecordingToNativeShell(blob, name, type) {
+  const endpoint = nativeSaveEndpoint();
+  if (!endpoint) return null;
+  try {
+    const response = await fetch(`${endpoint}/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': type || 'application/octet-stream',
+        'X-Tonni-Filename': encodeURIComponent(name),
+      },
+      body: blob,
+    });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => ({}));
+    return { method: 'native', filename: name, path: payload?.path || '' };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write a recording to the device. In the installed Android/iOS app the file is
+ * streamed to the native Download folder; on phones using a browser the anchor
+ * download lands directly in the Download folder; on desktop browsers that
+ * support the File System Access API the user can choose where to keep it.
  */
 export async function saveRecordingToDevice({ blob, filename, mime }) {
   const type = mime || blob.type || 'video/webm';
   const ext = extensionForMime(type);
   const name = filename || formatRecordingFilename({ ext });
+
+  const nativeResult = await postRecordingToNativeShell(blob, name, type);
+  if (nativeResult) return nativeResult;
 
   if (typeof window.showSaveFilePicker === 'function' && !isMobileDevice()) {
     try {

@@ -1,0 +1,235 @@
+name: Build Android APK
+
+# Builds the installable Android app (the Capacitor shell around the Vite
+# bundle) and publishes app-debug.apk as a downloadable artifact. Debug builds
+# are signed with the throw-away keystore Gradle generates on the runner, so
+# they install straight onto a phone; add a release keystore before using the
+# APK on Google Play.
+#
+# The backend URL baked into the APK resolves in this order:
+#   1. the `backend_url` input of a manual run,
+#   2. the repository variable VITE_SOCKET_URL (Settings → Secrets and variables
+#      → Actions → Variables),
+#   3. https://tonni.rmfbd.online.
+# Inside the app it can still be changed at runtime in Settings → Data & Storage
+# → Server URL, or with a ?backend=https://… query.
+on:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+      - 'feature/**'
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: 'Socket.IO backend URL baked into this build'
+        required: false
+        default: 'https://tonni.rmfbd.online'
+      publish_release:
+        description: 'Attach the APK to a GitHub release as well'
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEFAULT_BACKEND_URL: https://tonni.rmfbd.online
+  # Keep in sync with android/variables.gradle (compileSdkVersion).
+  ANDROID_PLATFORM: android-36
+
+jobs:
+  apk:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      # The ubuntu runner images ship a full Android SDK, which is all Gradle
+      # needs once ANDROID_HOME/ANDROID_SDK_ROOT and the command line tools are
+      # on the path.
+      - name: Locate the Android SDK
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          if [ ! -d "$SDK" ]; then
+            echo "No Android SDK found at $SDK" >&2
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          CMDLINE=""
+          for candidate in "$SDK/cmdline-tools/latest/bin" "$SDK/cmdline-tools/bin" "$SDK/tools/bin"; do
+            if [ -x "$candidate/sdkmanager" ]; then CMDLINE="$candidate"; break; fi
+          done
+          if [ -z "$CMDLINE" ]; then
+            echo "sdkmanager not found under $SDK" >&2
+            ls -la "$SDK" >&2
+            exit 1
+          fi
+          echo "$CMDLINE" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+
+          java -version
+          echo "Android SDK: $SDK (command line tools: $CMDLINE)"
+
+      - name: Install the Android platform and build tools
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses > /dev/null || true
+          sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;${ANDROID_PLATFORM}" "build-tools;36.0.0"
+          sdkmanager --sdk_root="$ANDROID_HOME" --list_installed
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Run the web test suite
+        run: npm test
+
+      - name: Build the web bundle
+        env:
+          VITE_SOCKET_URL: ${{ github.event.inputs.backend_url || vars.VITE_SOCKET_URL || 'https://tonni.rmfbd.online' }}
+        run: npm run build
+
+      - name: Generate Android icons and splash screens
+        run: npm run android:assets
+
+      - name: Sync the Capacitor Android project
+        run: npx cap sync android
+
+      - name: Build the debug APK
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Collect the APK
+        id: collect
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          NAME="Tonni-${VERSION}-debug.apk"
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk "artifacts/${NAME}"
+          SIZE=$(du -h "artifacts/${NAME}" | cut -f1)
+          SHA=$(sha256sum "artifacts/${NAME}" | cut -d' ' -f1)
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "size=${SIZE}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: tonni-debug-apk
+          path: artifacts/*.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Write the run summary
+        run: |
+          {
+            echo "## Tonni Android APK"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| File | \`${{ steps.collect.outputs.name }}\` |"
+            echo "| Version | ${{ steps.collect.outputs.version }} |"
+            echo "| Size | ${{ steps.collect.outputs.size }} |"
+            echo "| Backend | \`${{ github.event.inputs.backend_url || vars.VITE_SOCKET_URL || env.DEFAULT_BACKEND_URL }}\` |"
+            echo "| SHA-256 | \`${{ steps.collect.outputs.sha256 }}\` |"
+            echo ""
+            echo "### Install on an Android phone"
+            echo "1. Download the \`tonni-debug-apk\` artifact from this run."
+            echo "2. Unzip it and copy the APK to the phone."
+            echo "3. Open the file and allow *Install unknown apps* for whatever app opened it."
+            echo "4. Launch **Tonni**; Settings → Data & Storage lets you change the server URL."
+            echo ""
+            echo "Debug-signed build: for sideloading and testing, not for Google Play."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish release with APK
+    needs: apk
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Download the built APK
+        uses: actions/download-artifact@v8
+        with:
+          name: tonni-debug-apk
+          path: apk
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          APK=$(ls apk/*.apk | head -n 1)
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # Triggered by a v* tag push: the tag already exists.
+            TAG="${GITHUB_REF_NAME}"
+            TARGET_ARGS=(--verify-tag)
+          else
+            TAG="apk-${GITHUB_RUN_NUMBER}"
+            TARGET_ARGS=(--target "${GITHUB_SHA}")
+          fi
+
+          NOTES=$(mktemp)
+          {
+            echo "Installable Android build of **Tonni (You and Me)** ${VERSION}."
+            echo ""
+            echo "Download \`$(basename "${APK}")\` below and open it on your phone."
+            echo ""
+            echo "- Signed with the debug keystore — for sideloading and testing, not for Google Play."
+            echo "- Built from ${GITHUB_SHA}."
+            echo "- The server URL can be changed in Settings → Data & Storage → Server URL."
+          } > "${NOTES}"
+
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            gh release upload "${TAG}" "${APK}" --clobber
+          else
+            gh release create "${TAG}" "${APK}" \
+              "${TARGET_ARGS[@]}" \
+              --title "Tonni ${VERSION} (Android APK)" \
+              --notes-file "${NOTES}" \
+              --prerelease
+          fi

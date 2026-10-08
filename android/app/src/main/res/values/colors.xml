@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand palette, taken from public/icon-512.png. -->
+    <color name="colorPrimary">#2563EB</color>
+    <color name="colorPrimaryDark">#1D4ED8</color>
+    <color name="colorAccent">#3B82F6</color>
+    <color name="brand_background">#2563EB</color>
+    <color name="brand_status_bar">#1D4ED8</color>
+    <color name="brand_surface">#FFFFFF</color>
+</resources>

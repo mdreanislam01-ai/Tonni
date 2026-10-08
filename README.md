@@ -42,6 +42,58 @@ The site does not need to remain open for background message alerts: the browser
 
 For background alerts, deploy on HTTPS, grant notification permission, leave the background-alert setting enabled, and keep the Node/Socket.IO server available. On iPhone/iPad, Web Push requires a supported iOS version and the web app added to the Home Screen; behavior and notification action buttons vary by browser/OS. Web pages cannot create an always-on-top Messenger bubble over other apps, and browser notifications cannot provide a universal inline text-reply field. The notification's Reply action therefore opens the compact chat composer; it does not send a reply without opening the app surface. A true OS-level chat head/inline reply needs a native app (and Android overlay permission).
 
+## Android app (APK)
+
+The same web client also ships as an installable Android app. The native part is
+a small Capacitor shell (`capacitor.config.json` + `android/`) around the Vite
+bundle, so the UI is identical to the website.
+
+**Download an APK:** open the repository's **Actions → Build Android APK**, pick
+the newest successful run, and download the `tonni-debug-apk` artifact. Tagging a
+`v*` release (or running the workflow with `publish_release: true`) attaches the
+APK to a GitHub **Release** instead, which is easier to install from a phone.
+
+Install it by opening the file on the phone and allowing *Install unknown apps*
+for whatever app opened it. The APK is signed with Gradle's throw-away debug
+keystore, so it is meant for testing and sideloading — add a release keystore
+before publishing to Google Play.
+
+**Server URL.** A bundled app is served from `https://localhost`, so it cannot
+reach the Socket.IO server "same origin" the way the website does. The URL is
+resolved in this order:
+
+1. `?backend=https://…` query parameter,
+2. `window.__SOCKET_URL__` or a URL saved on the device (Settings → Data &
+   Storage → Server URL, key `ym_backend_url`),
+3. `VITE_SOCKET_URL` at build time — the workflow takes it from the repository
+   variable `VITE_SOCKET_URL` or its manual `backend_url` input,
+4. `https://tonni.rmfbd.online`.
+
+If chat says *offline* in the app, open Settings → Data & Storage → Server URL,
+paste the deployed HTTPS backend (it must be a Node/Socket.IO host such as
+Render, not a static host), and save — the app reloads and reconnects.
+
+**What the shell adds beyond the browser tab**
+
+- Android hardware/gesture back closes the top surface (dialog, details panel,
+  open chat, tab) before it leaves the app.
+- Recorded calls and downloaded attachments are written to
+  `Downloads/Tonni/` through a loopback file receiver, because a WebView has no
+  download manager and `blob:` downloads silently fail there.
+- Branded launcher icon, splash screen and status bar; microphone/camera
+  permissions are requested by the WebView when a call starts.
+
+**Building locally** (needs JDK 21 and an Android SDK with platform 36):
+
+```bash
+npm ci
+npm run android:sync    # vite build + copy the bundle into android/
+npm run android:apk     # -> android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+`npm run android:assets` regenerates the launcher icons and splash screens from
+`public/icon-512.png` (pure Node, no ImageMagick/Pillow needed).
+
 ## Hosting and privacy notes
 
 A preview URL is useful for trying the app, but it is not a permanent public deployment. To make it continuously available, deploy this Node app to a host that supports WebSockets and HTTPS, and point your domain there. Static-only hosting is not enough because chat delivery and call signaling use the included Socket.IO server.
