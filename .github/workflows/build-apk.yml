@@ -123,12 +123,15 @@ jobs:
         run: npx cap sync android
 
       - name: Decode release keystore (if provided)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "KEYSTORE_FILE=$RUNNER_TEMP/tonni-release.jks" >> "$GITHUB_ENV"
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/tonni-release.jks"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/tonni-release.jks" >> "$GITHUB_ENV"
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/tonni-release.jks"
+          else
+            echo "No KEYSTORE_BASE64 secret set — APK will be signed with the debug key."
+          fi
 
       - name: Gradle wrap (make executable)
         run: chmod +x android/gradlew
