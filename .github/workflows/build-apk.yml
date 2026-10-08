@@ -82,8 +82,12 @@ jobs:
           node-version: "20"
           cache: npm
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest runners ship a full Android SDK (ANDROID_HOME is preset),
+      # so no SDK setup action is needed — AGP downloads what it is missing.
+      - name: Verify Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME" | head -5
 
       - name: Install dependencies
         run: npm ci
